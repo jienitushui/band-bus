@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary_blue">#2563EB</color>
+    <color name="primary_blue_dark">#1D4ED8</color>
+    <color name="home_screen_bg">#F3F4F6</color>
+    <color name="tab_text_active">#111827</color>
+    <color name="tab_text_inactive">#6B7280</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <!-- MaterialComponents 主题无 colorSurfaceVariant，日志区用实色背景 -->
+    <color name="log_panel_background">#33222222</color>
+</resources>

@@ -1,0 +1,36 @@
+{
+  "package": "com.xiaomi.xms.wearable.demo",
+  "name": "interconnect-demo",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "minPlatformVersion": 1200,
+  "icon": "/common/logo.png",
+  "simulationVersion": "default",
+  "deviceTypeList": [
+    "watch"
+  ],
+  "features": [
+    {
+      "name": "system.router"
+    },
+    {
+      "name": "system.interconnect"
+    }
+  ],
+  "config": {
+    "logLevel": "log",
+    "designWidth": 480
+  },
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": {
+        "component": "index"
+      },
+      "pages/detail": {
+        "component": "detail"
+      }
+    }
+  },
+  "minAPILevel": 1
+}

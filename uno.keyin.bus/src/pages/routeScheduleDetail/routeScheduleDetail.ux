@@ -1,0 +1,347 @@
+<template>
+  <div class="page" style="height: {{pageHeight}}px;">
+    <div class="detail-nav">
+      <div class="round-btn back-btn" @click="back">
+        <image static src="/common/images/icon_back1.png" class="back-icon" />
+      </div>
+      <div class="nav-center">
+        <text static class="nav-title">运营时刻</text>
+        <text class="nav-route" style="lines:1;">{{routeTitle}}</text>
+      </div>
+      <div class="nav-placeholder"></div>
+    </div>
+
+    <div if="{{scheduleSections.length > 0}}" class="card-stage" style="height: {{contentHeight}}px;">
+      <list class="bus-card-list" bounces="false" style="height: {{contentHeight}}px;">
+        <list-item for="{{scheduleSections}}" type="schedule" class="bus-card-item" style="height: {{$item.cardHeight}}px;">
+          <div class="bus-card-simple">
+            <div class="bus-line-row schedule-line-row">
+              <text class="bus-line-name" style="lines:-1;">{{$item.title}}</text>
+              <text static class="bus-eta-pill schedule-eta-pill">运营</text>
+            </div>
+            <div class="bus-info-row schedule-info-row">
+              <text class="bus-dest-text" style="lines:-1;">{{$item.body}}</text>
+            </div>
+          </div>
+        </list-item>
+      </list>
+    </div>
+
+    <div if="{{scheduleSections.length === 0}}" class="state-layer" style="height: {{contentHeight}}px;">
+      <text static class="state-text">暂无运营时刻说明</text>
+    </div>
+
+    <div class="edge-back-zone" style="height: {{contentHeight}}px;" @swipe="onEdgeBackSwipe"></div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import device from '@system.device'
+
+const DESIGN_WIDTH = 336
+const DEFAULT_PAGE_HEIGHT = 336
+const NAV_HEIGHT = 94
+const CARD_PAD_Y = 32
+const ROW1_LINE = 34
+const ROW_GAP = 12
+const BODY_LINE = 28
+
+export default {
+  protected: {
+    routeTitle: '',
+    payload: ''
+  },
+  private: {
+    pageHeight: DEFAULT_PAGE_HEIGHT,
+    contentHeight: DEFAULT_PAGE_HEIGHT - NAV_HEIGHT,
+    scheduleSections: []
+  },
+  onInit() {
+    this.routeTitle = String(this.routeTitle || '').trim()
+    this.initLayout()
+    this.parsePayload()
+  },
+  back() {
+    router.back()
+  },
+  onEdgeBackSwipe(e) {
+    if (e && e.direction === 'right') {
+      this.back()
+    }
+  },
+  initLayout() {
+    if (!device || typeof device.getInfo !== 'function') {
+      this.applyLayout(DEFAULT_PAGE_HEIGHT)
+      return
+    }
+    device.getInfo({
+      success: (info) => {
+        const width = Number(info && info.screenWidth) || DESIGN_WIDTH
+        const height = Number(info && info.screenHeight) || DEFAULT_PAGE_HEIGHT
+        const scaledHeight = Math.floor(height * DESIGN_WIDTH / width)
+        this.applyLayout(scaledHeight)
+      },
+      fail: () => {
+        this.applyLayout(DEFAULT_PAGE_HEIGHT)
+      }
+    })
+  },
+  applyLayout(height) {
+    const safeHeight = Math.max(Math.min(Number(height) || DEFAULT_PAGE_HEIGHT, 520), 300)
+    this.pageHeight = safeHeight
+    this.contentHeight = Math.max(safeHeight - NAV_HEIGHT, 160)
+  },
+  estimateTextLines(text, charsPerLine) {
+    const chunks = String(text || '').split('\n')
+    let n = 0
+    for (let i = 0; i < chunks.length; i++) {
+      const line = chunks[i]
+      n += Math.max(1, Math.ceil(line.length / charsPerLine))
+    }
+    return Math.max(1, n)
+  },
+
+  computeCardHeight(title, body) {
+    const titleLines = this.estimateTextLines(title, 7)
+    const bodyLines = this.estimateTextLines(body, 11)
+    const row1H = Math.max(ROW1_LINE, titleLines * ROW1_LINE)
+    const row2H = ROW_GAP + bodyLines * BODY_LINE
+    const buffer = 18
+    return Math.max(126, CARD_PAD_Y + row1H + row2H + buffer)
+  },
+
+  parsePayload() {
+    const raw = String(this.payload || '').trim()
+    if (!raw) {
+      this.scheduleSections = []
+      return
+    }
+    try {
+      const data = JSON.parse(decodeURIComponent(raw))
+      const list = data && Array.isArray(data.sections) ? data.sections : []
+      this.scheduleSections = list
+        .map((item) => ({
+          title: item && item.title ? String(item.title) : '',
+          body: item && item.body != null ? String(item.body) : ''
+        }))
+        .filter((item) => item.title && item.body)
+        .map((item) =>
+          Object.assign({}, item, {
+            cardHeight: this.computeCardHeight(item.title, item.body)
+          })
+        )
+    } catch (e) {
+      this.scheduleSections = []
+    }
+  }
+}
+</script>
+
+<style>
+.page {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 336px;
+  background-color: #121921;
+  overflow: hidden;
+}
+
+.detail-nav {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 94px;
+  background-color: rgba(18, 25, 33, 0.96);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+}
+
+.round-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 27px;
+  justify-content: center;
+  align-items: center;
+}
+
+.back-btn {
+  position: absolute;
+  left: 20px;
+  top: 14px;
+  background-color: rgba(255, 255, 255, 0.10);
+}
+
+.back-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.nav-placeholder {
+  position: absolute;
+  left: 262px;
+  top: 14px;
+  width: 54px;
+  height: 54px;
+}
+
+.nav-center {
+  position: absolute;
+  left: 86px;
+  top: 12px;
+  width: 164px;
+  height: 70px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-title {
+  width: 164px;
+  line-height: 34px;
+  font-size: 26px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+}
+
+.nav-route {
+  width: 164px;
+  margin-top: 2px;
+  line-height: 28px;
+  font-size: 20px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.card-stage {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 336px;
+  overflow: hidden;
+  background-color: #121921;
+}
+
+.bus-card-list {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  padding: 8px 20px 20px 20px;
+  background-color: transparent;
+}
+
+.bus-card-item {
+  width: 296px;
+  margin-bottom: 12px;
+  background-color: transparent;
+}
+
+.bus-card-simple {
+  width: 296px;
+  height: 100%;
+  border-radius: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.06);
+  background-color: rgba(255, 255, 255, 0.06);
+  padding: 16px 18px;
+  flex-direction: column;
+}
+
+.bus-line-row {
+  width: 260px;
+  height: 34px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.schedule-line-row {
+  height: auto;
+  min-height: 34px;
+  align-items: flex-start;
+}
+
+.bus-line-name {
+  width: 150px;
+  line-height: 34px;
+  font-size: 29px;
+  font-weight: bold;
+  color: #ffffff;
+  text-overflow: ellipsis;
+}
+
+.bus-eta-pill {
+  width: 88px;
+  height: 28px;
+  border-radius: 6px;
+  background-color: rgba(52, 211, 153, 0.20);
+  line-height: 28px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #34d399;
+  text-align: center;
+}
+
+.schedule-eta-pill {
+  background-color: rgba(251, 146, 60, 0.20);
+  color: #fb923c;
+}
+
+.bus-info-row {
+  margin-top: 12px;
+  width: 260px;
+  height: 56px;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.schedule-info-row {
+  height: auto;
+  min-height: 56px;
+}
+
+.bus-dest-text {
+  width: 260px;
+  line-height: 28px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #ffffff;
+  text-overflow: ellipsis;
+}
+
+.state-layer {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 336px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: #121921;
+}
+
+.state-text {
+  margin-top: 12px;
+  width: 300px;
+  line-height: 40px;
+  font-size: 28px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: center;
+}
+
+.edge-back-zone {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 36px;
+  background-color: rgba(0, 0, 0, 0.01);
+}
+</style>

@@ -1,0 +1,2531 @@
+<template>
+  <div class="page" style="height: {{pageHeight}}px;">
+    <div if="{{homeViewMode === 'vibe'}}" class="vibe-view" style="height: {{pageHeight}}px;">
+      <div class="vibe-top-bar" @click="onTimeTap">
+        <text class="vibe-time-text">{{nowTime}}</text>
+      </div>
+      <div class="vibe-light-wrap">
+        <image static src="{{vibeLightSrc}}" class="vibe-light-img" />
+      </div>
+      <text class="vibe-status-label">{{vibeStatusLabel}}</text>
+      <text if="{{vibePollError}}" class="vibe-error-text">{{vibePollError}}</text>
+      <text class="vibe-hint-text">连点三次时间返回公交</text>
+    </div>
+
+    <div if="{{homeViewMode === 'bus'}}" class="home-view" style="height: {{pageHeight}}px;">
+      <div class="top-bar">
+        <div class="title-center" @click="onTimeTap">
+          <text class="time-text">{{nowTime}}</text>
+        </div>
+
+        <div class="station-pill" @click="openStationList">
+          <image static src="/common/images/icon_bus.png" class="station-bus-icon" />
+          <text class="station-name" style="lines:1;">{{stationName}}</text>
+          <image static src="/common/images/icon_arrow_right.png" class="station-arrow" />
+        </div>
+
+        <div class="round-btn location-btn" @click="refreshLocation">
+          <image static src="/common/images/icon_location.png" class="location-icon" />
+        </div>
+
+        <div class="round-btn direction-btn-home" @click="switchHomeLineDirection">
+          <text static class="direction-btn-home-text">换向</text>
+        </div>
+      </div>
+
+      <div if="{{loadingBus}}" class="state-layer" @click="refreshLocation">
+        <text class="state-text">{{loadingText}}</text>
+      </div>
+
+      <div if="{{!loadingBus && busList.length === 0}}" class="state-layer" @click="refreshLocation">
+        <image static src="/common/images/empty.png" class="empty-icon" />
+        <text static class="state-text">暂无线路</text>
+      </div>
+
+      <div if="{{!loadingBus && busList.length > 0}}" class="card-stage" style="height: {{busListHeight}}px;">
+        <div if="{{watchDebugUiEnabled && locationDebugVisible}}" class="location-debug">
+          <text class="location-debug-text">{{locationDebugText}}</text>
+        </div>
+        <list id="busList" class="bus-card-list {{watchDebugUiEnabled && locationDebugVisible ? 'bus-card-list-debug' : ''}}" bounces="false" style="height: {{busListHeight}}px;" onscroll="onBusListScroll" onscrollend="onBusListScrollEnd" onscrolltop="onBusListScrollTop" onscrollbottom="onBusListScrollBottom">
+          <list-item for="{{busList}}" type="bus" class="bus-card-item">
+            <div class="bus-card-simple" @click="openRoute($item)">
+              <div class="bus-line-row">
+                <text class="bus-line-name" style="lines:1;">{{getBusRoute($item)}}路</text>
+                <text class="bus-eta-pill">{{getBusEta($item)}} 分钟</text>
+              </div>
+              <div class="bus-info-row">
+                <text class="bus-dest-text" style="lines:1;">开往 {{getBusDest($item)}}</text>
+                <text class="bus-stops-text">剩余 {{getBusStops($item)}} 站</text>
+              </div>
+            </div>
+          </list-item>
+        </list>
+        <div class="bus-scrollbar-track {{busScrollbarVisible ? 'bus-scrollbar-visible' : 'bus-scrollbar-hidden'}}" style="top: {{busScrollbarTrackTop}}px;">
+          <div class="bus-scrollbar-thumb" style="height: {{busScrollbarHeight}}px; top: {{busScrollbarTop}}px;"></div>
+        </div>
+      </div>
+
+      <div if="{{watchDebugUiEnabled && interconnectFlowLog}}" class="interconnect-flow-log">
+        <text class="interconnect-flow-log-text" style="lines:6;">{{interconnectFlowLog}}</text>
+      </div>
+
+      <div class="edge-back-zone" style="height: {{busListHeight}}px;" @touchstart="onEdgeTouchStart" @touchend="onEdgeTouchEnd"></div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import storage from '../../utils/storage.js';
+import fetch from '@system.fetch';
+import prompt from '@system.prompt';
+import device from '@system.device';
+import geolocation from '@system.geolocation';
+import app from '@system.app';
+import interconnect from '@system.interconnect';
+let icConnect = null;
+let vibeVibrator = null;
+let vibeBrightness = null;
+
+function getVibeBrightness() {
+  if (vibeBrightness) {
+    return vibeBrightness;
+  }
+  try {
+    vibeBrightness = require('@system.brightness');
+  } catch (e) {
+    vibeBrightness = null;
+  }
+  return vibeBrightness;
+}
+
+function getVibeVibrator() {
+  if (vibeVibrator) {
+    return vibeVibrator;
+  }
+  try {
+    vibeVibrator = require('@system.vibrator');
+  } catch (e) {
+    vibeVibrator = null;
+  }
+  return vibeVibrator;
+}
+
+const DEFAULT_LAT = 24.874132;
+const DEFAULT_LNG = 118.675675;
+const API_URL = 'https://h5.mygolbs.com/ApiData.do';
+const CITY_NAME = '泉州市';
+const CITY_KEY = 'qz595803';
+const LOCATION_CACHE_KEY = 'BUS_LAST_LOCATION';
+const DESIGN_WIDTH = 336;
+const DEFAULT_PAGE_HEIGHT = 336;
+const HOME_LIST_TOP = 126;
+const BUS_SCROLLBAR_TRACK_HEIGHT = 132;
+const BUS_SCROLLBAR_MIN_HEIGHT = 34;
+const BUS_LOAD_TIMEOUT = 6500;
+const BUS_CARD_ITEM_HEIGHT = 138;
+const SCROLLBAR_HIDE_DELAY = 520;
+const LOCATION_TOAST_INTERVAL = 1800;
+/** 须大于手机侧 Fused 单次定位超时（约 15s），否则手表先判超时手机才回包 */
+const PHONE_LOCATION_WAIT_MS = 17000;
+/** icConnect.send 若 success 未触发则无法启动「等手机」定时器，用此看门狗走失败重试链（含会话+索要两包） */
+const PHONE_SEND_GUARD_MS = 9000;
+/** 本机 GPS 单次请求超时（室内可略短） */
+const WATCH_GPS_TIMEOUT_MS = 10000;
+/** 仅本机 GPS 阶段：守护须大于 WATCH_GPS_TIMEOUT，避免先于 geolocation fail 触发 */
+const LOCATION_GPS_UI_GUARD_MS = WATCH_GPS_TIMEOUT_MS + 6000;
+const PHONE_FAILS_BEFORE_WATCH_GPS_KEY = 'BUS_PHONE_FAILS_BEFORE_WATCH_GPS';
+const DEFAULT_PHONE_FAILS_BEFORE_WATCH_GPS = 2;
+const MAX_PHONE_FAILS_BEFORE_WATCH_GPS = 20;
+/** 手机一轮失败后稍等再索，避免 Wear 通道抖动 */
+const PHONE_LOC_RETRY_GAP_MS = 350;
+/** 单次定位流程总守护上限，避免长时间卡在「正在获取定位」 */
+const LOCATION_SESSION_GUARD_MAX_MS = 92000;
+const AUTO_LOCATE_INTERCONNECT_POLL_MS = 450;
+const AUTO_LOCATE_INTERCONNECT_MAX_RETRIES = 42;
+/** 附近站点 CMD106 与首屏线路：相同经纬度下最短间隔（毫秒），force 可跳过 */
+const NEARBY_FETCH_THROTTLE_MS = 12000;
+const BUS_WATCH_DEBUG_UI_KEY = 'BUS_WATCH_DEBUG_UI';
+const VIBE_STATUS_API_KEY = 'VIBE_STATUS_API_URL';
+const HOME_DEFAULT_MODE_KEY = 'HOME_DEFAULT_MODE';
+const DEFAULT_VIBE_STATUS_URL = 'http://127.0.0.1:3000/status';
+const VIBE_POLL_INTERVAL_MS = 1500;
+const TIME_TRIPLE_TAP_MS = 750;
+const VIBE_STATUS_META = {
+  idle: { label: '空闲', src: '/common/images/vibe/red.png' },
+  start: { label: '工作中', src: '/common/images/vibe/green.png' },
+  pending: { label: '等待确认', src: '/common/images/vibe/yellow.png' },
+  end: { label: '本轮完成', src: '/common/images/vibe/red.png' }
+};
+/** 从站台列表选站返回首页后，暂缓自动定位，避免覆盖所选站台 */
+const SUPPRESS_AUTO_LOCATE_AFTER_STATION_MS = 35000;
+
+export default {
+  protected: {
+    selectedStationName: '',
+    selectedStationLat: '',
+    selectedStationLon: '',
+    selectedStationLng: ''
+  },
+  private: {
+    nowTime: '00:00',
+    timer: null,
+    timeFormat: '24h',
+
+    stationName: '附近站点',
+    loadingBus: true,
+    loadingText: '正在加载线路…',
+    isRefreshing: false,
+    isLocating: false,
+    isBusLoading: false,
+    busRequestId: 0,
+
+    myLat: DEFAULT_LAT,
+    myLng: DEFAULT_LNG,
+    busList: [],
+    pageHeight: DEFAULT_PAGE_HEIGHT,
+    busListHeight: DEFAULT_PAGE_HEIGHT - HOME_LIST_TOP,
+    busScrollbarTrackTop: 34,
+
+    busScrollbarVisible: false,
+    busScrollbarHeight: 104,
+    busScrollbarTop: 0,
+    busScrollbarTimer: null,
+    locationDebugVisible: false,
+    locationDebugText: '',
+    locationDebugTimer: null,
+
+    pendingPhoneLocRequestId: '',
+    phoneLocWaitTimer: null,
+    phoneLocRetryTimer: null,
+    phoneLocSendGuardTimer: null,
+    interconnectFlowLog: '就绪',
+    locationToastTimer: null,
+    locationTimeoutTimer: null,
+    locationRequestId: 0,
+    lastAutoLocateOpenAt: 0,
+    pendingDeferredAutoLocate: false,
+    autoLocateInterconnectTimer: null,
+    autoLocateInterconnectRetries: 0,
+    edgeTouchStartX: 0,
+    edgeTouchStartY: 0,
+
+    /** 连续几次拿不到手机坐标后才走本机 GPS（手机 App 经心跳下发，手表 storage 缓存） */
+    phoneSyncRetriesBeforeWatchGps: DEFAULT_PHONE_FAILS_BEFORE_WATCH_GPS,
+    phoneLocFailureCountThisRequest: 0,
+
+    lastWatchSessionNotifyAt: 0,
+
+    watchDebugUiEnabled: false,
+    lastNearbyFetchKey: '',
+    lastNearbyFetchAt: 0,
+    suppressAutoLocateUntil: 0,
+    /** 首页 CMD115 与详情一致：1 上行 / 2 下行，换向按钮切换 */
+    lineDirection: '1',
+    homeDirectionRequestId: 0,
+
+    nearbyStations: [],
+
+    homeViewMode: 'bus',
+    vibeStatus: 'idle',
+    vibeStatusLabel: '空闲',
+    vibeLightSrc: '/common/images/vibe/red.png',
+    vibePollError: '',
+    vibePollTimer: null,
+    vibeStatusApiUrl: DEFAULT_VIBE_STATUS_URL,
+    vibeLastHapticLight: '',
+    timeTapCount: 0,
+    timeTapTimer: null
+  },
+
+  onInit() {
+    try {
+      this.initLayout();
+    } catch (e) {
+      this.applyLayout(DEFAULT_PAGE_HEIGHT);
+    }
+
+    storage.get({
+      key: 'BUS_TIME_FORMAT',
+      success: (data) => {
+        if (data) this.timeFormat = data;
+        this.updateTime();
+      },
+      fail: () => {
+        this.updateTime();
+      }
+    });
+
+    storage.get({
+      key: PHONE_FAILS_BEFORE_WATCH_GPS_KEY,
+      success: (data) => {
+        const n = parseInt(data, 10);
+        if (!isNaN(n) && n >= 1) {
+          this.phoneSyncRetriesBeforeWatchGps = Math.min(MAX_PHONE_FAILS_BEFORE_WATCH_GPS, n);
+        }
+      },
+      fail: () => {}
+    });
+
+    storage.get({
+      key: BUS_WATCH_DEBUG_UI_KEY,
+      success: (data) => {
+        this.watchDebugUiEnabled = data === '1' || data === 1 || data === true;
+      },
+      fail: () => {}
+    });
+
+    storage.get({
+      key: VIBE_STATUS_API_KEY,
+      success: (data) => {
+        if (data) {
+          this.vibeStatusApiUrl = String(data);
+        }
+      },
+      fail: () => {}
+    });
+
+    storage.get({
+      key: HOME_DEFAULT_MODE_KEY,
+      success: (data) => {
+        if (data === 'vibe') {
+          this.homeViewMode = 'vibe';
+          this.applyVibeStatus('idle');
+        }
+        this.bootstrapAfterHomeModeReady();
+      },
+      fail: () => {
+        this.bootstrapAfterHomeModeReady();
+      }
+    });
+  },
+
+  bootstrapAfterHomeModeReady() {
+    this.timer = setInterval(() => {
+      this.updateTime();
+    }, 60000);
+
+    if (this.homeViewMode === 'vibe') {
+      this.clearDeferredAutoLocateWait();
+    } else {
+      this.loadCachedLocationAndRoutes();
+    }
+    this.setupInterconnect();
+  },
+
+  setupInterconnect() {
+    if (icConnect) {
+      return;
+    }
+    try {
+      icConnect = interconnect.instance();
+      icConnect.onopen = () => {
+        this.pushInterconnectFlowLog('手机互联已连接');
+        if (this.homeViewMode === 'vibe') {
+          return;
+        }
+        this.showLocationStatus('手机互联已连接');
+        if (this.pendingDeferredAutoLocate && !this.isLocating) {
+          this.autoLocateInterconnectRetries = 0;
+          this.kickDeferredAutoLocate();
+        }
+      };
+      icConnect.onclose = () => {
+        this.showLocationStatus('手机互联断开');
+      };
+      icConnect.onerror = (d) => {
+        const c = d && d.code !== undefined && d.code !== null ? d.code : '?';
+        this.showLocationStatus('手机互联错误 ' + c);
+      };
+      icConnect.onmessage = (data) => {
+        const raw = data && data.data !== undefined && data.data !== null ? String(data.data) : '';
+        try {
+          const o = JSON.parse(raw);
+          if (o && o.type === 'relay_heartbeat') {
+            const wf = o.watchGpsAfterPhoneFailures;
+            if (wf != null && wf !== '') {
+              const n = parseInt(String(wf), 10);
+              if (!isNaN(n) && n >= 1) {
+                const v = Math.min(MAX_PHONE_FAILS_BEFORE_WATCH_GPS, n);
+                if (v !== this.phoneSyncRetriesBeforeWatchGps) {
+                  this.phoneSyncRetriesBeforeWatchGps = v;
+                  storage.set({
+                    key: PHONE_FAILS_BEFORE_WATCH_GPS_KEY,
+                    value: String(v),
+                    fail: () => {}
+                  });
+                }
+              }
+            }
+            const dbg = o.showWatchDebugUi;
+            if (dbg === true || dbg === false || dbg === 1 || dbg === 0 || dbg === '1' || dbg === '0') {
+              const on = dbg === true || dbg === 1 || dbg === '1';
+              if (on !== this.watchDebugUiEnabled) {
+                this.watchDebugUiEnabled = on;
+                storage.set({
+                  key: BUS_WATCH_DEBUG_UI_KEY,
+                  value: on ? '1' : '0',
+                  fail: () => {}
+                });
+              }
+            }
+            if (o.vibeStatusApiUrl != null && String(o.vibeStatusApiUrl).trim()) {
+              const url = String(o.vibeStatusApiUrl).trim();
+              if (url !== this.vibeStatusApiUrl) {
+                this.vibeStatusApiUrl = url;
+                storage.set({ key: VIBE_STATUS_API_KEY, value: url, fail: () => {} });
+                if (this.homeViewMode === 'vibe') {
+                  this.pollVibeStatus();
+                }
+              }
+            }
+            if (o.watchDefaultHome === 'vibe' || o.watchDefaultHome === 'bus') {
+              storage.set({
+                key: HOME_DEFAULT_MODE_KEY,
+                value: String(o.watchDefaultHome),
+                fail: () => {}
+              });
+            }
+            return;
+          }
+          if (this.homeViewMode === 'vibe') {
+            if (o && o.type === 'phone_location' && o.lat != null && o.lng != null) {
+              const lat = Number(o.lat);
+              const lng = Number(o.lng);
+              if (!isNaN(lat) && !isNaN(lng)) {
+                this.myLat = lat;
+                this.myLng = lng;
+                this.cacheLocation(lat, lng);
+              }
+            }
+            return;
+          }
+          if (o && o.type === 'phone_location_error') {
+            const rid = o.requestId != null ? String(o.requestId) : '';
+            const pending = this.pendingPhoneLocRequestId;
+            const errMatch = pending && (rid === pending || this.isLocating);
+            if (errMatch) {
+              if (this.phoneLocWaitTimer) {
+                clearTimeout(this.phoneLocWaitTimer);
+                this.phoneLocWaitTimer = null;
+              }
+              this.pendingPhoneLocRequestId = '';
+              const code = o.code != null ? String(o.code) : '';
+              this.pushInterconnectFlowLog('手机回错:' + code);
+              const wid = this.locationRequestId;
+              this.afterPhoneLocFailureOrGps(wid, '回错:' + code);
+              return;
+            }
+          }
+          if (o && o.type === 'phone_location' && o.lat != null && o.lng != null) {
+            const lat = Number(o.lat);
+            const lng = Number(o.lng);
+            if (!isNaN(lat) && !isNaN(lng)) {
+              const rid = o.requestId != null ? String(o.requestId) : '';
+              const pending = this.pendingPhoneLocRequestId;
+              const strict = !!(rid && pending && rid === pending);
+              const takeAsReply = strict || !!(this.isLocating && pending);
+              if (takeAsReply) {
+                if (this.phoneLocWaitTimer) {
+                  clearTimeout(this.phoneLocWaitTimer);
+                  this.phoneLocWaitTimer = null;
+                }
+                this.pendingPhoneLocRequestId = '';
+                this.myLat = lat;
+                this.myLng = lng;
+                this.cacheLocation(lat, lng);
+                this.showLocationDebug(lat, lng);
+                this.pushInterconnectFlowLog(strict ? '收到手机坐标→请求线路' : '收到手机坐标(待定位中)→结束等待');
+                this.finishLocationRequest('已用手机定位', 3000);
+                this.loadBusRoutes({ lat, lng, force: true, preferNearestStation: true });
+                return;
+              }
+              const proactive = o && o.source === 'proactive';
+              this.myLat = lat;
+              this.myLng = lng;
+              this.cacheLocation(lat, lng);
+              this.showLocationDebug(lat, lng);
+              if (proactive) {
+                this.pushInterconnectFlowLog('手机主动首包→请求线路');
+              } else {
+                this.pushInterconnectFlowLog('手机推送坐标(非本次索取)');
+                this.showLocationStatus('手机辅助定位已更新');
+              }
+              this.loadBusRoutes({ lat, lng, force: true, preferNearestStation: true });
+              return;
+            }
+          }
+        } catch (e) {
+          /* 非 JSON，走下方纯文本 */
+        }
+        const short = raw.length > 48 ? raw.slice(0, 48) + '…' : raw;
+        this.showLocationStatus('手机消息: ' + short);
+      };
+    } catch (e) {
+      console.error('interconnect init failed', e);
+    }
+  },
+
+  initLayout() {
+    if (!device || typeof device.getInfo !== 'function') {
+      this.applyLayout(DEFAULT_PAGE_HEIGHT);
+      return;
+    }
+
+    device.getInfo({
+      success: (info) => {
+        const width = Number(info && info.screenWidth) || DESIGN_WIDTH;
+        const height = Number(info && info.screenHeight) || DEFAULT_PAGE_HEIGHT;
+        const scaledHeight = Math.floor(height * DESIGN_WIDTH / width);
+        this.applyLayout(scaledHeight);
+      },
+      fail: () => {
+        this.applyLayout(DEFAULT_PAGE_HEIGHT);
+      }
+    });
+  },
+
+  applyLayout(height) {
+    const safeHeight = Math.max(Math.min(Number(height) || DEFAULT_PAGE_HEIGHT, 520), 300);
+    const busHeight = Math.max(safeHeight - HOME_LIST_TOP, 170);
+
+    this.pageHeight = safeHeight;
+    this.busListHeight = busHeight;
+    this.busScrollbarTrackTop = Math.max(Math.floor((busHeight - BUS_SCROLLBAR_TRACK_HEIGHT) / 2), 8);
+  },
+
+  onShow() {
+    this.updateTime();
+    this.setupInterconnect();
+    this.syncVibeKeepScreenOn();
+    if (this.homeViewMode === 'vibe') {
+      this.startVibePolling();
+    } else {
+      this.notifyPhoneWatchSessionActive();
+      this.scheduleAutoLocateOnAppOpen();
+    }
+  },
+
+  onHide() {
+    this.setVibeKeepScreenOn(false);
+  },
+
+  /** 首页显示时尽早建互联，并节流通知手机前台会话（避免频繁唤醒手机侧高精度预热） */
+  notifyPhoneWatchSessionActive() {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    const now = Date.now();
+    if (this.lastWatchSessionNotifyAt && now - this.lastWatchSessionNotifyAt < 45000) {
+      return;
+    }
+    this.lastWatchSessionNotifyAt = now;
+    this.setupInterconnect();
+    if (!icConnect) {
+      return;
+    }
+    icConnect.getReadyState({
+      success: (data) => {
+        if (!data || data.status !== 1) {
+          return;
+        }
+        try {
+          icConnect.send({
+            data: { type: 'watch_app_session', foreground: true, ts: Date.now() },
+            success: () => {
+              this.pushInterconnectFlowLog('已发前台会话→手机');
+            },
+            fail: () => {}
+          });
+        } catch (e) {}
+      },
+      fail: () => {}
+    });
+  },
+
+  /** 进入首页后等手机 interconnect 就绪再自动定位，避免冷启动时误判未连上直接走本机 GPS */
+  scheduleAutoLocateOnAppOpen() {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    const now = Date.now();
+    if (this.suppressAutoLocateUntil && now < this.suppressAutoLocateUntil) {
+      this.lastAutoLocateOpenAt = now;
+      return;
+    }
+    if (this.lastAutoLocateOpenAt && now - this.lastAutoLocateOpenAt < 2800) {
+      return;
+    }
+    this.lastAutoLocateOpenAt = now;
+    if (this.isLocating) {
+      this.pushInterconnectFlowLog('已在定位中跳过');
+      return;
+    }
+    this.clearDeferredAutoLocateWait();
+    this.pendingDeferredAutoLocate = true;
+    this.autoLocateInterconnectRetries = 0;
+    this.pushInterconnectFlowLog('打开首页→等互联后自动定位');
+    this.kickDeferredAutoLocate();
+  },
+
+  clearDeferredAutoLocateWait() {
+    if (this.autoLocateInterconnectTimer) {
+      clearTimeout(this.autoLocateInterconnectTimer);
+      this.autoLocateInterconnectTimer = null;
+    }
+    this.pendingDeferredAutoLocate = false;
+  },
+
+  kickDeferredAutoLocate() {
+    if (this.homeViewMode === 'vibe') {
+      this.clearDeferredAutoLocateWait();
+      return;
+    }
+    if (!this.pendingDeferredAutoLocate || this.isLocating) {
+      return;
+    }
+    this.setupInterconnect();
+    if (!icConnect) {
+      this.pushInterconnectFlowLog('无互联模块→直接定位');
+      this.clearDeferredAutoLocateWait();
+      this.refreshLocation();
+      return;
+    }
+
+    icConnect.getReadyState({
+      success: (data) => {
+        if (!this.pendingDeferredAutoLocate || this.isLocating) {
+          return;
+        }
+        if (data && data.status === 1) {
+          this.clearDeferredAutoLocateWait();
+          this.pushInterconnectFlowLog('互联就绪→自动定位');
+          this.refreshLocation();
+          return;
+        }
+        this.autoLocateInterconnectRetries += 1;
+        if (this.autoLocateInterconnectRetries >= AUTO_LOCATE_INTERCONNECT_MAX_RETRIES) {
+          this.pushInterconnectFlowLog('互联等待超时→仍尝试定位');
+          this.clearDeferredAutoLocateWait();
+          this.refreshLocation();
+          return;
+        }
+        if (this.autoLocateInterconnectTimer) {
+          clearTimeout(this.autoLocateInterconnectTimer);
+        }
+        this.autoLocateInterconnectTimer = setTimeout(() => {
+          this.autoLocateInterconnectTimer = null;
+          this.kickDeferredAutoLocate();
+        }, AUTO_LOCATE_INTERCONNECT_POLL_MS);
+      },
+      fail: () => {
+        if (!this.pendingDeferredAutoLocate || this.isLocating) {
+          return;
+        }
+        this.autoLocateInterconnectRetries += 1;
+        if (this.autoLocateInterconnectRetries >= AUTO_LOCATE_INTERCONNECT_MAX_RETRIES) {
+          this.pushInterconnectFlowLog('互联就绪查询失败→仍尝试定位');
+          this.clearDeferredAutoLocateWait();
+          this.refreshLocation();
+          return;
+        }
+        if (this.autoLocateInterconnectTimer) {
+          clearTimeout(this.autoLocateInterconnectTimer);
+        }
+        this.autoLocateInterconnectTimer = setTimeout(() => {
+          this.autoLocateInterconnectTimer = null;
+          this.kickDeferredAutoLocate();
+        }, AUTO_LOCATE_INTERCONNECT_POLL_MS);
+      }
+    });
+  },
+
+  onRefresh(query) {
+    this.applySelectedStation(query || {});
+  },
+
+  onEdgeTouchStart(e) {
+    const point = this.getTouchPoint(e);
+    this.edgeTouchStartX = point ? point.clientX : 0;
+    this.edgeTouchStartY = point ? point.clientY : 0;
+  },
+
+  onEdgeTouchEnd(e) {
+    const point = this.getTouchPoint(e);
+    if (!point || !this.edgeTouchStartX) return;
+
+    const dx = point.clientX - this.edgeTouchStartX;
+    const dy = Math.abs(point.clientY - this.edgeTouchStartY);
+    this.edgeTouchStartX = 0;
+    this.edgeTouchStartY = 0;
+
+    if (dx > 32 && dx > dy * 1.2) {
+      app.terminate();
+    }
+  },
+
+  getTouchPoint(e) {
+    if (!e) return null;
+    if (e.changedTouches && e.changedTouches.length) return e.changedTouches[0];
+    if (e.touches && e.touches.length) return e.touches[0];
+    return e.clientX != null ? e : null;
+  },
+
+  onDestroy() {
+    this.setVibeKeepScreenOn(false);
+    this.stopVibePolling();
+    if (this.timeTapTimer) {
+      clearTimeout(this.timeTapTimer);
+      this.timeTapTimer = null;
+    }
+    this.clearDeferredAutoLocateWait();
+    if (this.phoneLocWaitTimer) {
+      clearTimeout(this.phoneLocWaitTimer);
+      this.phoneLocWaitTimer = null;
+    }
+    if (this.phoneLocRetryTimer) {
+      clearTimeout(this.phoneLocRetryTimer);
+      this.phoneLocRetryTimer = null;
+    }
+    if (this.phoneLocSendGuardTimer) {
+      clearTimeout(this.phoneLocSendGuardTimer);
+      this.phoneLocSendGuardTimer = null;
+    }
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (this.busScrollbarTimer) {
+      clearTimeout(this.busScrollbarTimer);
+      this.busScrollbarTimer = null;
+    }
+    if (this.locationDebugTimer) {
+      clearTimeout(this.locationDebugTimer);
+      this.locationDebugTimer = null;
+    }
+    this.stopLocationToast();
+    this.busList = null;
+  },
+
+  onTimeTap() {
+    if (this.timeTapTimer) {
+      clearTimeout(this.timeTapTimer);
+      this.timeTapTimer = null;
+    }
+    this.timeTapCount += 1;
+    if (this.timeTapCount >= 3) {
+      this.timeTapCount = 0;
+      this.toggleHomeViewMode();
+      return;
+    }
+    this.timeTapTimer = setTimeout(() => {
+      this.timeTapCount = 0;
+      this.timeTapTimer = null;
+    }, TIME_TRIPLE_TAP_MS);
+  },
+
+  toggleHomeViewMode() {
+    const next = this.homeViewMode === 'bus' ? 'vibe' : 'bus';
+    this.applyHomeViewMode(next, true);
+  },
+
+  setVibeKeepScreenOn(keepOn) {
+    const b = getVibeBrightness();
+    if (!b || typeof b.setKeepScreenOn !== 'function') {
+      return;
+    }
+    try {
+      b.setKeepScreenOn({
+        keepScreenOn: !!keepOn,
+        fail: () => {}
+      });
+    } catch (e) {}
+  },
+
+  syncVibeKeepScreenOn() {
+    this.setVibeKeepScreenOn(this.homeViewMode === 'vibe');
+  },
+
+  applyHomeViewMode(mode, showToast) {
+    const next = mode === 'vibe' ? 'vibe' : 'bus';
+    if (this.homeViewMode === next) {
+      return;
+    }
+    this.homeViewMode = next;
+    storage.set({ key: HOME_DEFAULT_MODE_KEY, value: next, fail: () => {} });
+    this.syncVibeKeepScreenOn();
+    if (next === 'vibe') {
+      this.clearDeferredAutoLocateWait();
+      if (this.isLocating) {
+        this.abortOngoingLocation('Vibe 模式→停止定位');
+      }
+      this.vibeLastHapticLight = '';
+      this.startVibePolling();
+      if (showToast) {
+        prompt.showToast({ message: 'Vibe Coding 状态', duration: 1800 });
+      }
+    } else {
+      this.stopVibePolling();
+      this.vibePollError = '';
+      this.notifyPhoneWatchSessionActive();
+      this.scheduleAutoLocateOnAppOpen();
+      if (showToast) {
+        prompt.showToast({ message: '公交首页', duration: 1800 });
+      }
+    }
+  },
+
+  normalizeVibeStatusUrl(url) {
+    let u = String(url || '').trim();
+    if (!u) {
+      return DEFAULT_VIBE_STATUS_URL;
+    }
+    if (u.indexOf('://') < 0) {
+      u = 'http://' + u;
+    }
+    if (!/\/status\/?$/i.test(u)) {
+      u = u.replace(/\/+$/, '') + '/status';
+    }
+    return u;
+  },
+
+  getVibeLightKey(src) {
+    const s = String(src || '');
+    if (s.indexOf('yellow') >= 0) {
+      return 'yellow';
+    }
+    if (s.indexOf('green') >= 0) {
+      return 'green';
+    }
+    if (s.indexOf('red') >= 0) {
+      return 'red';
+    }
+    return '';
+  },
+
+  applyVibeStatus(status) {
+    const key = VIBE_STATUS_META[status] ? status : 'idle';
+    const meta = VIBE_STATUS_META[key];
+    const prevLight = this.vibeLastHapticLight;
+    const nextLight = this.getVibeLightKey(meta.src);
+
+    this.vibeStatus = key;
+    this.vibeStatusLabel = meta.label;
+    this.vibeLightSrc = meta.src;
+
+    if (this.homeViewMode === 'vibe' && prevLight && nextLight && prevLight !== nextLight) {
+      if (nextLight === 'yellow') {
+        this.vibeHapticDouble();
+      } else if (nextLight === 'red') {
+        this.vibeHapticOnce();
+      }
+    }
+    if (nextLight) {
+      this.vibeLastHapticLight = nextLight;
+    }
+  },
+
+  vibePulse(delayMs) {
+    const run = () => {
+      const v = getVibeVibrator();
+      if (!v || typeof v.vibrate !== 'function') {
+        return;
+      }
+      try {
+        if (typeof v.getSystemDefaultMode === 'function') {
+          const mode = v.getSystemDefaultMode();
+          if (mode === 0) {
+            return;
+          }
+        }
+      } catch (e) {
+        /* 忽略，继续尝试振动 */
+      }
+      try {
+        v.vibrate({ mode: 'long' });
+      } catch (e1) {
+        try {
+          v.vibrate({});
+        } catch (e2) {
+          try {
+            v.vibrate({ mode: 'short' });
+          } catch (e3) {}
+        }
+      }
+    };
+    if (delayMs > 0) {
+      setTimeout(run, delayMs);
+    } else {
+      run();
+    }
+  },
+
+  vibeHapticOnce() {
+    this.vibePulse(0);
+  },
+
+  vibeHapticDouble() {
+    this.vibePulse(0);
+    this.vibePulse(360);
+  },
+
+  parseVibeStatusPayload(res) {
+    if (!res) {
+      return null;
+    }
+    let body = res.data != null ? res.data : res;
+    if (body && body.data != null) {
+      body = body.data;
+    }
+    if (body && body.status) {
+      return String(body.status);
+    }
+    if (typeof body === 'string') {
+      try {
+        const o = JSON.parse(body);
+        const inner = o && o.data != null ? o.data : o;
+        if (inner && inner.status) {
+          return String(inner.status);
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  },
+
+  pollVibeStatus() {
+    const url = this.normalizeVibeStatusUrl(this.vibeStatusApiUrl);
+    try {
+      fetch.fetch({
+        url,
+        method: 'GET',
+        responseType: 'json',
+        success: (res) => {
+          const status = this.parseVibeStatusPayload(res);
+          if (status) {
+            this.applyVibeStatus(status);
+            this.vibePollError = '';
+          } else {
+            this.vibePollError = '响应无效';
+          }
+        },
+        fail: () => {
+          this.vibePollError = '无法连接';
+          this.applyVibeStatus('idle');
+        }
+      });
+    } catch (e) {
+      this.vibePollError = '请求失败';
+    }
+  },
+
+  startVibePolling() {
+    this.stopVibePolling();
+    this.pollVibeStatus();
+    this.vibePollTimer = setInterval(() => {
+      this.pollVibeStatus();
+    }, VIBE_POLL_INTERVAL_MS);
+  },
+
+  stopVibePolling() {
+    if (this.vibePollTimer) {
+      clearInterval(this.vibePollTimer);
+      this.vibePollTimer = null;
+    }
+  },
+
+  updateTime() {
+    const date = new Date();
+    let hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+
+    if (this.timeFormat === '12h') {
+      const ampm = hours >= 12 ? '下午' : '上午';
+      hours = hours % 12 || 12;
+      this.nowTime = `${ampm} ${hours}:${minutes}`;
+      return;
+    }
+
+    this.nowTime = `${hours.toString().padStart(2, '0')}:${minutes}`;
+  },
+
+  loadCachedLocationAndRoutes() {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    storage.get({
+      key: LOCATION_CACHE_KEY,
+      default: '',
+      success: (value) => {
+        const cached = this.parseCachedLocation(value);
+        if (cached) {
+          this.myLat = cached.lat;
+          this.myLng = cached.lng;
+          this.showLocationStatus('使用缓存定位加载');
+        }
+        this.loadBusRoutes();
+      },
+      fail: () => {
+        this.loadBusRoutes();
+      }
+    });
+  },
+
+  parseCachedLocation(value) {
+    if (!value) return null;
+    try {
+      const data = typeof value === 'string' ? JSON.parse(value) : value;
+      const lat = Number(data && data.lat);
+      const lng = Number(data && data.lng);
+      if (isNaN(lat) || isNaN(lng)) return null;
+      return { lat, lng };
+    } catch (e) {
+      return null;
+    }
+  },
+
+  cacheLocation(lat, lng) {
+    storage.set({
+      key: LOCATION_CACHE_KEY,
+      value: JSON.stringify({
+        lat,
+        lng,
+        time: Date.now()
+      })
+    });
+  },
+
+  geoKeyForThrottle(lat, lng) {
+    const la = Math.round(lat * 10000) / 10000;
+    const ln = Math.round(lng * 10000) / 10000;
+    return `${la},${ln}`;
+  },
+
+  pickPrimaryStation(stations, preferName) {
+    if (!Array.isArray(stations) || stations.length === 0) {
+      return { name: '' };
+    }
+    const nameStr = preferName != null ? String(preferName) : '';
+    if (nameStr) {
+      const hit = stations.find((s) => s && s.name === nameStr);
+      if (hit) return hit;
+    }
+    return stations[0];
+  },
+
+  async loadBusRoutes(options = {}) {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    if (this.isBusLoading && !options.force) return;
+
+    const lat = Number(options.lat != null ? options.lat : this.myLat);
+    const lng = Number(options.lng != null ? options.lng : this.myLng);
+    const geoKey = this.geoKeyForThrottle(lat, lng);
+
+    if (!options.force && this.lastNearbyFetchKey === geoKey && this.lastNearbyFetchAt && (Date.now() - this.lastNearbyFetchAt < NEARBY_FETCH_THROTTLE_MS)) {
+      this.pushInterconnectFlowLog('附近数据节流(坐标未变)');
+      if (this.isRefreshing) {
+        this.isRefreshing = false;
+      }
+      return;
+    }
+
+    const hadList = Array.isArray(this.busList) && this.busList.length > 0;
+    this.isBusLoading = true;
+    if (!hadList) {
+      this.loadingBus = true;
+      this.loadingText = '正在加载附近站点…';
+    }
+    this.busRequestId += 1;
+    const requestId = this.busRequestId;
+
+    try {
+      const stations = await this.fetchNearbyStations(lat, lng);
+      if (requestId !== this.busRequestId) return;
+
+      if (!stations.length) {
+        this.nearbyStations = [];
+        this.stationName = '附近站点';
+        if (!hadList) {
+          this.applyBusList([]);
+          prompt.showToast({ message: '附近暂无公交站点', duration: 2000 });
+        } else if (requestId === this.busRequestId) {
+          prompt.showToast({ message: '更新完成', duration: 1500 });
+        }
+        return;
+      }
+
+      this.nearbyStations = stations;
+      if (!hadList) {
+        this.loadingText = '正在解析站台…';
+      }
+      await Promise.all(stations.slice(0, 4).map((st) => this.hydrateStation209(st)));
+      if (requestId !== this.busRequestId) return;
+
+      const preferName = options.preferNearestStation
+        ? ''
+        : (options.preferStationName != null ? options.preferStationName : this.stationName);
+      const firstStation = this.pickPrimaryStation(stations, preferName);
+      this.stationName = firstStation.name || this.stationName;
+      if (options.preferNearestStation) {
+        this.lineDirection = '1';
+      }
+      if (!hadList) {
+        this.loadingText = '正在加载线路…';
+      }
+
+      const lines = await this.fetchStationLines(firstStation);
+      if (requestId !== this.busRequestId) return;
+      const linesForUi = lines.length ? await this.enrichHomeLinesWith104(lines) : [];
+      if (requestId !== this.busRequestId) return;
+      if (linesForUi.length > 0) {
+        this.applyBusList(linesForUi);
+      } else if (!hadList) {
+        this.applyBusList([]);
+        prompt.showToast({ message: '该站点暂无到站预报', duration: 2000 });
+      }
+      this.nearbyStations = this.applyStationLines(stations, firstStation, linesForUi);
+      this.loadNearbyStationLines(stations, requestId);
+      this.lastNearbyFetchKey = geoKey;
+      this.lastNearbyFetchAt = Date.now();
+      if (hadList && requestId === this.busRequestId) {
+        prompt.showToast({ message: '更新完成', duration: 1500 });
+      }
+    } catch (e) {
+      if (!hadList) {
+        this.applyBusList([]);
+        this.showLocationStatus('数据接口请求失败');
+      }
+      prompt.showToast({ message: '数据加载失败', duration: 2000 });
+    } finally {
+      if (requestId === this.busRequestId) {
+        this.isBusLoading = false;
+        this.loadingBus = false;
+        this.isRefreshing = false;
+      }
+    }
+  },
+
+  fetchNearbyStations(lat, lng) {
+    return this.apiPost({
+      CMD: '106',
+      CITYNAME: CITY_NAME,
+      CITYKEY: CITY_KEY,
+      LAT: lat,
+      LNG: lng
+    }).then((payload) => {
+      const list = payload && Array.isArray(payload.data) ? payload.data : [];
+      return list.slice(0, 6).map((item, index) => ({
+        id: `station-${index}-${item.name || ''}`,
+        name: item.name || '未知站点',
+        lat: item.lat,
+        lon: item.lon,
+        lng: item.lon,
+        distance: this.parseDistance(item.dis),
+        lines: [],
+        buses: []
+      }));
+    });
+  },
+
+  /**
+   * CMD 115（首页）：与 H5 换站台一致——站名与经纬度取自 **209** 当前选用站台位点；ALL 固定为 1；不传 DIRECTION/LAT/LNG。
+   */
+  fetchStationLines(station) {
+    const m = this.resolveStationQueryMeta(station);
+    const latS = String(m.lat);
+    const lngS = String(m.lng);
+    const nameStr = m.name ? String(m.name) : String(this.stationName || '');
+    return this.apiPost({
+      CMD: '115',
+      CITYNAME: CITY_NAME,
+      CITYKEY: CITY_KEY,
+      STATIONNAME: nameStr,
+      MYLAT: latS,
+      MYLNG: lngS,
+      ALL: '1'
+    }).then((payload) => {
+      const list = payload && Array.isArray(payload.data) ? payload.data : [];
+      return list;
+    });
+  },
+
+  /**
+   * CMD 209：同名站多物理站台。请求 MYLAT/MYLNG/LAT/LNG 均用 **106** 该条站点坐标；返回 `info[]` 供 **115** 选用站台位点的 `name`/`lat`/`lon`。
+   */
+  fetchStationPlatforms209(station) {
+    const lat0 = station && station.lat != null ? String(station.lat) : String(this.myLat);
+    const lng0 =
+      station && (station.lon != null || station.lng != null)
+        ? String(station.lon != null ? station.lon : station.lng)
+        : String(this.myLng);
+    return this.apiPost({
+      CMD: '209',
+      CITYNAME: CITY_NAME,
+      CITYKEY: CITY_KEY,
+      STATIONNAME: station && station.name ? station.name : this.stationName,
+      MYLAT: lat0,
+      MYLNG: lng0,
+      LAT: lat0,
+      LNG: lng0
+    }).then((payload) => {
+      const raw =
+        payload && Array.isArray(payload.info)
+          ? payload.info
+          : payload && payload.data && Array.isArray(payload.data.info)
+            ? payload.data.info
+            : [];
+      const rows = raw
+        .map((it) => {
+          if (!it || it.name == null) return null;
+          const lat = it.lat != null ? it.lat : it.latitude;
+          const ln = it.lng != null ? it.lng : it.lon;
+          if (lat == null || ln == null) return null;
+          return {
+            name: String(it.name),
+            lat: String(lat),
+            lng: String(ln),
+            lon: String(ln),
+            dis: it.dis != null ? Number(it.dis) : 0,
+            sameNum: it.sameNum != null ? it.sameNum : 0
+          };
+        })
+        .filter(Boolean);
+      rows.sort((a, b) => (Number(a.dis) || 0) - (Number(b.dis) || 0));
+      return rows;
+    });
+  },
+
+  hydrateStation209(station) {
+    if (!station || !station.name) return Promise.resolve();
+    return this.fetchStationPlatforms209(station)
+      .then((list) => {
+        station.platform209 = Array.isArray(list) ? list : [];
+      })
+      .catch(() => {
+        station.platform209 = [];
+      });
+  },
+
+  /**
+   * 115 使用的站台名与经纬度：优先 **209** `info` 当前方向对应条；否则回退 106 站名与坐标。
+   */
+  resolveStationQueryMeta(station) {
+    const fallbackName = String((station && station.name) || this.stationName || '');
+    if (!station) {
+      return { lat: Number(this.myLat), lng: Number(this.myLng), name: fallbackName };
+    }
+    const list = station.platform209;
+    if (Array.isArray(list) && list.length >= 2) {
+      const idx = String(this.lineDirection) === '2' ? 1 : 0;
+      const p = list[idx];
+      if (p) {
+        const la = Number(p.lat);
+        const ln = Number(p.lng != null && p.lng !== '' ? p.lng : p.lon);
+        if (!isNaN(la) && !isNaN(ln)) {
+          return { lat: la, lng: ln, name: p.name != null ? String(p.name) : fallbackName };
+        }
+      }
+    }
+    if (Array.isArray(list) && list.length === 1) {
+      const p = list[0];
+      const la = Number(p.lat);
+      const ln = Number(p.lng != null && p.lng !== '' ? p.lng : p.lon);
+      if (!isNaN(la) && !isNaN(ln)) {
+        return { lat: la, lng: ln, name: p.name != null ? String(p.name) : fallbackName };
+      }
+    }
+    const la = Number(station.lat != null ? station.lat : this.myLat);
+    const ln = Number(station.lon != null ? station.lon : (station.lng != null ? station.lng : this.myLng));
+    return {
+      lat: isNaN(la) ? Number(this.myLat) : la,
+      lng: isNaN(ln) ? Number(this.myLng) : ln,
+      name: fallbackName
+    };
+  },
+
+  /**
+   * 与详情页一致：LINENAME 需带「路」字时由接口约定，此处与 busDetail.normalizeLineName 对齐。
+   */
+  normalizeLineNameForApi(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return '';
+    if (raw.indexOf('路') >= 0) return raw;
+    return `${raw}路`;
+  },
+
+  /**
+   * CMD 104：本站、本方向的车辆到站预测（动态）。首页 115 常不按方向区分展示，换向后用 104 合并到卡片字段供 parseEta 使用。
+   */
+  fetchCmd104Payload(lineNameWithLu, stationOrderStr) {
+    const direction = String(this.lineDirection) === '2' ? '2' : '1';
+    return this.apiPost({
+      CMD: '104',
+      CITYNAME: CITY_NAME,
+      CITYKEY: CITY_KEY,
+      LINENAME: lineNameWithLu,
+      DIRECTION: direction,
+      STATIONORDER: stationOrderStr != null ? String(stationOrderStr) : '0'
+    });
+  },
+
+  merge104IntoHomeLineItem(item, realtime) {
+    if (!realtime || typeof realtime !== 'object') return item;
+    const next = Object.assign({}, item);
+    const eta = Array.isArray(realtime.routeOnStationRTimeInfoList) ? realtime.routeOnStationRTimeInfoList[0] : null;
+    if (eta) {
+      if (eta.busToStationTime != null) {
+        delete next.eta;
+      }
+      const tips = eta.busToStationTips || '';
+      const tmin = eta.busToStationTime != null ? `${eta.busToStationTime}分钟` : '';
+      const tipTxt = eta.busToStationTimeTips || '';
+      const merged = [tips, tipTxt || tmin].filter(Boolean).join(' ').trim();
+      if (merged) next.neartext = merged;
+      if (eta.busToStationTime != null) next.neartime = String(eta.busToStationTime);
+    }
+    const plan104 = realtime.planTime != null ? String(realtime.planTime).trim() : '';
+    if (plan104) next.planTime = plan104;
+    return next;
+  },
+
+  enrichOneHomeLineWith104(item) {
+    const route = this.getBusRoute(item);
+    if (!route || route === '--') return Promise.resolve(item);
+    const lineName = this.normalizeLineNameForApi(route);
+    const so = item.stationOrder != null ? String(Math.max(0, parseInt(item.stationOrder, 10) || 0)) : '0';
+    return this.fetchCmd104Payload(lineName, so).then((rt) => this.merge104IntoHomeLineItem(item, rt)).catch(() => item);
+  },
+
+  enrichHomeLinesWith104(lines) {
+    if (!Array.isArray(lines) || !lines.length) return Promise.resolve(lines);
+    return Promise.all(lines.map((it) => this.enrichOneHomeLineWith104(it)));
+  },
+
+  parseDistance(value) {
+    const distance = Number(value);
+    if (isNaN(distance)) return 0;
+    return Math.max(Math.round(distance), 0);
+  },
+
+  applyStationLines(stations, station, lines) {
+    const names = this.extractLineNames(lines);
+    return stations.map((item) => {
+      if (item.name === station.name) {
+        return Object.assign({}, item, {
+          lines: names,
+          buses: lines
+        });
+      }
+      return item;
+    });
+  },
+
+  loadNearbyStationLines(stations, requestId) {
+    const rest = stations.slice(1, 4);
+    rest.forEach((station) => {
+      this.fetchStationLines(station).then((lines) => {
+        if (requestId !== this.busRequestId) return;
+        this.nearbyStations = this.applyStationLines(this.nearbyStations, station, lines);
+      }).catch(() => {});
+    });
+  },
+
+  extractLineNames(lines) {
+    if (!Array.isArray(lines)) return [];
+    const names = [];
+    lines.forEach((line) => {
+      const name = this.getBusRoute(line);
+      if (name && name !== '--' && names.indexOf(name) < 0 && names.length < 4) {
+        names.push(name);
+      }
+    });
+    return names;
+  },
+
+  apiPost(params) {
+    const pairs = [];
+    Object.keys(params).forEach((key) => {
+      const value = params[key] == null ? '' : String(params[key]);
+      pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    });
+    return this.fetchBusRoutes(pairs.join('&')).then((response) => {
+      return response && response.data ? response.data : response;
+    });
+  },
+
+  fetchBusRoutes(body) {
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      const timer = setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        reject(new Error('BUS_LOAD_TIMEOUT'));
+      }, BUS_LOAD_TIMEOUT);
+
+      const done = (handler, data) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        handler(data);
+      };
+
+      try {
+        fetch.fetch({
+          url: API_URL,
+          method: 'POST',
+          header: {
+            'User-Agent': 'Mozilla/5.0',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://h5.mygolbs.com/?areacode=qz595803',
+            'Origin': 'https://h5.mygolbs.com'
+          },
+          data: body,
+          responseType: 'json',
+          success: (res) => done(resolve, res),
+          fail: (err) => done(reject, err)
+        });
+      } catch (e) {
+        done(reject, e);
+      }
+    });
+  },
+
+  applyBusList(list) {
+    const dirNum = String(this.lineDirection) === '2' ? 2 : 1;
+    const mapped = Array.isArray(list)
+      ? list.map((item, index) => {
+          const eta = this.parseEta(item, index);
+          const stops = this.parseStops(item, eta);
+          return Object.assign({}, item, {
+            eta,
+            stops,
+            lineName: item.lineName || item.route || item.linename || item.routeName || '--',
+            to: this.getBusDest(item),
+            stationOrder: item.stationOrder != null ? item.stationOrder : stops,
+            upperOrDown: dirNum
+          });
+        })
+      : [];
+
+    this.busList = mapped.sort((a, b) => this.parseEta(a, 0) - this.parseEta(b, 0));
+    this.updateBusScrollbar(0, false);
+  },
+
+  parseEta(item, index) {
+    if (!item) return 3 + index * 8;
+    if (item.eta != null) return Math.max(parseInt(item.eta, 10) || 1, 1);
+
+    const source = [item.neardis, item.neartext, item.nexttext, item.neartime, item.planTime].filter(Boolean).join(' ');
+    const minute = source.match(/(\d+(?:\.\d+)?)\s*分钟/);
+    if (minute) return Math.max(Math.round(Number(minute[1])) || 1, 1);
+
+    const match = source.match(/\d+/);
+    if (match) return Math.max(parseInt(match[0], 10) || 1, 1);
+
+    return 3 + index * 8;
+  },
+
+  parseStops(item, eta) {
+    if (!item) return Math.max(Math.ceil(eta / 2), 1);
+    if (item.stops != null) return Math.max(parseInt(item.stops, 10) || 1, 1);
+    if (item.stationOrder != null) return Math.max(parseInt(item.stationOrder, 10) || 1, 1);
+    const source = [item.neardis, item.neartext, item.nexttext, item.neartime].filter(Boolean).join(' ');
+    const stop = source.match(/(\d+)\s*站/);
+    if (stop) return Math.max(parseInt(stop[1], 10) || 1, 1);
+    return Math.max(Math.ceil(eta / 2), 1);
+  },
+
+  pushInterconnectFlowLog(message) {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const line = `${hh}:${mm}:${ss} ${message}`;
+    const prev = this.interconnectFlowLog ? String(this.interconnectFlowLog).split('\n') : [];
+    prev.push(line);
+    while (prev.length > 6) {
+      prev.shift();
+    }
+    this.interconnectFlowLog = prev.join('\n');
+  },
+
+  getPhoneFailsBeforeWatchGpsCap() {
+    const n = Math.floor(Number(this.phoneSyncRetriesBeforeWatchGps));
+    if (isNaN(n) || n < 1) return DEFAULT_PHONE_FAILS_BEFORE_WATCH_GPS;
+    return Math.min(MAX_PHONE_FAILS_BEFORE_WATCH_GPS, n);
+  },
+
+  computeLocationSessionGuardMs() {
+    const n = this.getPhoneFailsBeforeWatchGpsCap();
+    if (!icConnect) return LOCATION_GPS_UI_GUARD_MS;
+    const raw = n * PHONE_LOCATION_WAIT_MS + WATCH_GPS_TIMEOUT_MS + 18000;
+    return Math.min(raw, LOCATION_SESSION_GUARD_MAX_MS);
+  },
+
+  startLocationSessionGuard(watchReqId, ms) {
+    if (this.locationTimeoutTimer) {
+      clearTimeout(this.locationTimeoutTimer);
+      this.locationTimeoutTimer = null;
+    }
+    this.locationTimeoutTimer = setTimeout(() => {
+      if (watchReqId !== this.locationRequestId) return;
+      if (this.phoneLocRetryTimer) {
+        clearTimeout(this.phoneLocRetryTimer);
+        this.phoneLocRetryTimer = null;
+      }
+      this.locationRequestId += 1;
+      this.pushInterconnectFlowLog('定位总超时→结束等待并拉线路');
+      this.finishLocationRequest('定位超时', 3000);
+      this.loadBusRoutes({ force: true });
+    }, ms);
+  },
+
+  clearLocationSessionGuard() {
+    if (this.locationTimeoutTimer) {
+      clearTimeout(this.locationTimeoutTimer);
+      this.locationTimeoutTimer = null;
+    }
+  },
+
+  startLocatingToastLoop() {
+    if (this.locationToastTimer) {
+      clearInterval(this.locationToastTimer);
+      this.locationToastTimer = null;
+    }
+    this.showLocatingToast();
+    this.locationToastTimer = setInterval(() => {
+      this.showLocatingToast();
+    }, LOCATION_TOAST_INTERVAL);
+  },
+
+  stopLocatingToastLoop() {
+    if (this.locationToastTimer) {
+      clearInterval(this.locationToastTimer);
+      this.locationToastTimer = null;
+    }
+  },
+
+  abortOngoingLocation(logMsg) {
+    if (this.phoneLocSendGuardTimer) {
+      clearTimeout(this.phoneLocSendGuardTimer);
+      this.phoneLocSendGuardTimer = null;
+    }
+    if (this.phoneLocWaitTimer) {
+      clearTimeout(this.phoneLocWaitTimer);
+      this.phoneLocWaitTimer = null;
+    }
+    if (this.phoneLocRetryTimer) {
+      clearTimeout(this.phoneLocRetryTimer);
+      this.phoneLocRetryTimer = null;
+    }
+    this.pendingPhoneLocRequestId = '';
+    this.stopLocationToast();
+    this.isLocating = false;
+    this.locationRequestId += 1;
+    if (logMsg) {
+      this.pushInterconnectFlowLog(logMsg);
+    }
+  },
+
+  afterPhoneLocFailureOrGps(watchReqId, reason) {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    if (watchReqId !== this.locationRequestId) return;
+    this.phoneLocFailureCountThisRequest += 1;
+    const maxR = this.getPhoneFailsBeforeWatchGpsCap();
+    if (this.phoneLocFailureCountThisRequest < maxR) {
+      this.pushInterconnectFlowLog(`手机同步第${this.phoneLocFailureCountThisRequest}次失败(${reason})→重试`);
+      if (this.phoneLocRetryTimer) {
+        clearTimeout(this.phoneLocRetryTimer);
+      }
+      this.phoneLocRetryTimer = setTimeout(() => {
+        this.phoneLocRetryTimer = null;
+        if (watchReqId !== this.locationRequestId) return;
+        this.tryPhoneLocationFirst(watchReqId);
+      }, PHONE_LOC_RETRY_GAP_MS);
+      return;
+    }
+    this.phoneLocFailureCountThisRequest = 0;
+    this.pushInterconnectFlowLog(`手机同步连续${maxR}次失败→本机GPS`);
+    this.runWatchOnlyGps(watchReqId);
+  },
+
+  refreshLocation() {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    this.clearDeferredAutoLocateWait();
+    this.homeDirectionRequestId += 1;
+    this.pushInterconnectFlowLog('点击定位：刷新位置与附近站点线路');
+
+    if (this.isLocating) {
+      this.abortOngoingLocation('再次点击定位→打断上一轮');
+    }
+
+    if (this.phoneLocRetryTimer) {
+      clearTimeout(this.phoneLocRetryTimer);
+      this.phoneLocRetryTimer = null;
+    }
+    if (this.phoneLocWaitTimer) {
+      clearTimeout(this.phoneLocWaitTimer);
+      this.phoneLocWaitTimer = null;
+    }
+    this.pendingPhoneLocRequestId = '';
+
+    this.isLocating = true;
+    this.locationRequestId += 1;
+    const watchReqId = this.locationRequestId;
+    this.phoneLocFailureCountThisRequest = 0;
+
+    this.setupInterconnect();
+    this.tryPhoneLocationFirst(watchReqId);
+  },
+
+  /** 仅在确认要等手机回包时启动「正在获取定位」与长守护，避免未连接也刷屏 */
+  beginPhoneWaitUi(watchReqId) {
+    if (this.phoneLocSendGuardTimer) {
+      clearTimeout(this.phoneLocSendGuardTimer);
+      this.phoneLocSendGuardTimer = null;
+    }
+    this.stopLocatingToastLoop();
+    this.clearLocationSessionGuard();
+    const guardMs = this.computeLocationSessionGuardMs();
+    this.startLocationSessionGuard(watchReqId, guardMs);
+    this.startLocatingToastLoop();
+  },
+
+  /** 无法用手机定位时：明确提示后走手表 GPS（不再走多轮手机重试） */
+  notifyNoPhoneThenWatchGps(watchReqId, reason) {
+    if (watchReqId !== this.locationRequestId) return;
+    if (this.phoneLocSendGuardTimer) {
+      clearTimeout(this.phoneLocSendGuardTimer);
+      this.phoneLocSendGuardTimer = null;
+    }
+    this.stopLocatingToastLoop();
+    this.clearLocationSessionGuard();
+    let msg = '手机未连接，使用手表定位';
+    if (reason === 'no_ic') {
+      msg = '无互联模块，使用手表定位';
+    } else if (reason === 'ready_fail') {
+      msg = '无法连接手机，使用手表定位';
+    }
+    prompt.showToast({ message: msg, duration: 2300 });
+    this.showLocationStatus(msg);
+    this.pushInterconnectFlowLog(msg);
+    this.runWatchOnlyGps(watchReqId);
+  },
+
+  tryPhoneLocationFirst(watchReqId) {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    this.setupInterconnect();
+    if (!icConnect) {
+      this.pushInterconnectFlowLog('无互联模块');
+      this.notifyNoPhoneThenWatchGps(watchReqId, 'no_ic');
+      return;
+    }
+
+    icConnect.getReadyState({
+      success: (data) => {
+        if (watchReqId !== this.locationRequestId) return;
+        if (data.status !== 1) {
+          this.pushInterconnectFlowLog('手机互联未就绪');
+          this.notifyNoPhoneThenWatchGps(watchReqId, 'offline');
+          return;
+        }
+
+        const rid = `w-${Date.now()}`;
+        this.pendingPhoneLocRequestId = rid;
+        this.pushInterconnectFlowLog('向手机索取坐标');
+        this.beginPhoneWaitUi(watchReqId);
+
+        try {
+          if (this.phoneLocSendGuardTimer) {
+            clearTimeout(this.phoneLocSendGuardTimer);
+            this.phoneLocSendGuardTimer = null;
+          }
+          const onRequestSentOk = () => {
+            if (watchReqId !== this.locationRequestId) return;
+            if (this.phoneLocSendGuardTimer) {
+              clearTimeout(this.phoneLocSendGuardTimer);
+              this.phoneLocSendGuardTimer = null;
+            }
+            this.pushInterconnectFlowLog('请求已送达手机');
+            if (this.phoneLocWaitTimer) {
+              clearTimeout(this.phoneLocWaitTimer);
+            }
+            this.phoneLocWaitTimer = setTimeout(() => {
+              if (watchReqId !== this.locationRequestId) return;
+              if (this.pendingPhoneLocRequestId === rid) {
+                this.pendingPhoneLocRequestId = '';
+                this.phoneLocWaitTimer = null;
+                this.pushInterconnectFlowLog('等待手机超时');
+                this.afterPhoneLocFailureOrGps(watchReqId, '超时');
+              }
+            }, PHONE_LOCATION_WAIT_MS);
+          };
+          const onRequestSentFail = () => {
+            if (watchReqId !== this.locationRequestId) return;
+            if (this.phoneLocSendGuardTimer) {
+              clearTimeout(this.phoneLocSendGuardTimer);
+              this.phoneLocSendGuardTimer = null;
+            }
+            this.pendingPhoneLocRequestId = '';
+            this.pushInterconnectFlowLog('索要失败');
+            this.afterPhoneLocFailureOrGps(watchReqId, '发送失败');
+          };
+          const sendRequestLocation = () => {
+            icConnect.send({
+              data: { type: 'request_location', requestId: rid, ts: Date.now() },
+              success: onRequestSentOk,
+              fail: onRequestSentFail
+            });
+          };
+          /** 先于 request_location，让手机侧 isLocationSessionActive 与高精度预热生效，避免冷连时仍用平衡模式 */
+          icConnect.send({
+            data: { type: 'watch_app_session', foreground: true, ts: Date.now() },
+            success: () => {
+              this.pushInterconnectFlowLog('已发前台会话→索要坐标');
+              sendRequestLocation();
+            },
+            fail: () => {
+              this.pushInterconnectFlowLog('前台会话发送失败→仍索要坐标');
+              sendRequestLocation();
+            }
+          });
+          this.phoneLocSendGuardTimer = setTimeout(() => {
+            this.phoneLocSendGuardTimer = null;
+            if (watchReqId !== this.locationRequestId) return;
+            if (this.pendingPhoneLocRequestId !== rid) return;
+            if (this.phoneLocWaitTimer) return;
+            this.pendingPhoneLocRequestId = '';
+            this.pushInterconnectFlowLog('send未回调→按失败重试');
+            this.afterPhoneLocFailureOrGps(watchReqId, 'send无回调');
+          }, PHONE_SEND_GUARD_MS);
+        } catch (e) {
+          if (this.phoneLocSendGuardTimer) {
+            clearTimeout(this.phoneLocSendGuardTimer);
+            this.phoneLocSendGuardTimer = null;
+          }
+          this.pendingPhoneLocRequestId = '';
+          this.pushInterconnectFlowLog('send异常');
+          this.afterPhoneLocFailureOrGps(watchReqId, 'send异常');
+        }
+      },
+      fail: () => {
+        if (watchReqId !== this.locationRequestId) return;
+        this.pushInterconnectFlowLog('就绪查询失败');
+        this.notifyNoPhoneThenWatchGps(watchReqId, 'ready_fail');
+      }
+    });
+  },
+
+  runWatchOnlyGps(watchReqId) {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    this.clearLocationSessionGuard();
+    this.startLocationSessionGuard(watchReqId, LOCATION_GPS_UI_GUARD_MS);
+    this.startLocatingToastLoop();
+
+    try {
+      geolocation.getLocation({
+        timeout: WATCH_GPS_TIMEOUT_MS,
+        success: (data) => {
+          if (watchReqId !== this.locationRequestId) return;
+          const lat = Number(data && data.latitude);
+          const lng = Number(data && data.longitude);
+
+          if (isNaN(lat) || isNaN(lng)) {
+            this.pushInterconnectFlowLog('本机返回坐标无效→用缓存/默认拉线路');
+            this.finishLocationRequest('定位数据无效', 2500);
+            this.loadBusRoutes({ force: true });
+            return;
+          }
+
+          this.myLat = lat;
+          this.myLng = lng;
+          this.cacheLocation(lat, lng);
+          this.showLocationDebug(lat, lng);
+          this.pushInterconnectFlowLog('本机GPS→请求线路');
+          this.finishLocationRequest(`经度:${lng.toFixed(6)} 纬度:${lat.toFixed(6)}`, 4000);
+          this.loadBusRoutes({ lat, lng, force: true, preferNearestStation: true });
+        },
+        fail: (data, code) => {
+          if (watchReqId !== this.locationRequestId) return;
+          this.pushInterconnectFlowLog('本机定位失败→用上次位置拉线路');
+          this.finishLocationRequest(this.getLocationFailMessage(code), 3000);
+          this.loadBusRoutes({ force: true });
+        },
+        complete: () => {
+          if (watchReqId === this.locationRequestId) {
+            this.stopLocationToast();
+          }
+        }
+      });
+    } catch (e) {
+      if (watchReqId !== this.locationRequestId) return;
+      this.pushInterconnectFlowLog('本机定位异常→用缓存拉线路');
+      this.finishLocationRequest('定位接口不可用', 2500);
+      this.loadBusRoutes({ force: true });
+    }
+  },
+
+  showLocatingToast() {
+    prompt.showToast({ message: '正在获取定位…', duration: 2000 });
+  },
+
+  stopLocationToast() {
+    if (this.phoneLocSendGuardTimer) {
+      clearTimeout(this.phoneLocSendGuardTimer);
+      this.phoneLocSendGuardTimer = null;
+    }
+    if (this.phoneLocWaitTimer) {
+      clearTimeout(this.phoneLocWaitTimer);
+      this.phoneLocWaitTimer = null;
+    }
+    if (this.phoneLocRetryTimer) {
+      clearTimeout(this.phoneLocRetryTimer);
+      this.phoneLocRetryTimer = null;
+    }
+    this.stopLocatingToastLoop();
+    this.clearLocationSessionGuard();
+  },
+
+  finishLocationRequest(message, duration) {
+    this.stopLocationToast();
+    this.isLocating = false;
+    prompt.showToast({ message, duration });
+  },
+
+  getLocationFailMessage(code) {
+    if (code === 203) return '定位失败:设备不支持';
+    if (code === 204) return '定位失败:超时';
+    if (code === 400) return '定位失败:权限被拒绝';
+    if (code === 402) return '定位失败:未声明权限';
+    return `定位失败:${code || '未知错误'}`;
+  },
+
+  showLocationDebug(lat, lng) {
+    if (this.locationDebugTimer) {
+      clearTimeout(this.locationDebugTimer);
+      this.locationDebugTimer = null;
+    }
+
+    this.locationDebugText = `经度 ${lng.toFixed(6)}  纬度 ${lat.toFixed(6)}`;
+    this.locationDebugVisible = true;
+    this.locationDebugTimer = setTimeout(() => {
+      this.locationDebugVisible = false;
+      this.locationDebugTimer = null;
+    }, 5000);
+  },
+
+  showLocationStatus(text) {
+    if (this.locationDebugTimer) {
+      clearTimeout(this.locationDebugTimer);
+      this.locationDebugTimer = null;
+    }
+
+    this.locationDebugText = text;
+    this.locationDebugVisible = true;
+    this.locationDebugTimer = setTimeout(() => {
+      this.locationDebugVisible = false;
+      this.locationDebugTimer = null;
+    }, 2500);
+  },
+
+  async switchHomeLineDirection() {
+    if (this.isBusLoading || this.isLocating || this.isRefreshing) {
+      prompt.showToast({ message: '请稍候…', duration: 1500 });
+      return;
+    }
+    const stations = this.nearbyStations;
+    if (!Array.isArray(stations) || !stations.length) {
+      prompt.showToast({ message: '请先点左侧定位，刷新位置与站点', duration: 2200 });
+      return;
+    }
+    const prevDir = String(this.lineDirection) === '2' ? '2' : '1';
+    const next = prevDir === '1' ? '2' : '1';
+    this.lineDirection = next;
+    const rid = ++this.homeDirectionRequestId;
+    const hadList = Array.isArray(this.busList) && this.busList.length > 0;
+    this.isRefreshing = true;
+    if (!hadList) {
+      this.loadingBus = true;
+      this.loadingText = '正在换向…';
+    }
+    this.pushInterconnectFlowLog(`换向 DIRECTION=${next}`);
+    try {
+      const primary = this.pickPrimaryStation(stations, this.stationName);
+      if (!primary || !primary.name) {
+        this.lineDirection = prevDir;
+        prompt.showToast({ message: '当前无站点', duration: 2000 });
+        return;
+      }
+      if (!Array.isArray(primary.platform209) || !primary.platform209.length) {
+        if (!hadList) {
+          this.loadingText = '正在解析站台…';
+        }
+        await this.hydrateStation209(primary);
+      }
+      const lines = await this.fetchStationLines(primary);
+      if (rid !== this.homeDirectionRequestId) {
+        this.lineDirection = prevDir;
+        return;
+      }
+      if (!lines.length) {
+        this.lineDirection = prevDir;
+        prompt.showToast({ message: '该方向暂无到站数据', duration: 2000 });
+        return;
+      }
+      const linesForUi = await this.enrichHomeLinesWith104(lines);
+      if (rid !== this.homeDirectionRequestId) {
+        this.lineDirection = prevDir;
+        return;
+      }
+      this.applyBusList(linesForUi);
+      this.nearbyStations = this.applyStationLines(stations, primary, linesForUi);
+      const rest = stations.slice(1, 4);
+      rest.forEach((st) => {
+        this.fetchStationLines(st).then((ls) => {
+          if (rid !== this.homeDirectionRequestId) return;
+          this.nearbyStations = this.applyStationLines(this.nearbyStations, st, ls);
+        }).catch(() => {});
+      });
+      prompt.showToast({ message: '换向成功', duration: 2000 });
+    } catch (e) {
+      this.lineDirection = prevDir;
+      prompt.showToast({ message: '换向失败，请重试', duration: 2000 });
+    } finally {
+      if (!hadList) {
+        this.loadingText = '正在加载线路…';
+      }
+      this.loadingBus = false;
+      this.isRefreshing = false;
+    }
+  },
+
+  openStationList() {
+    router.push({
+      uri: '/pages/stations',
+      params: {
+        stationName: this.stationName,
+        myLat: String(this.myLat),
+        myLng: String(this.myLng),
+        stations: this.encodeStations(this.nearbyStations)
+      }
+    });
+  },
+
+  encodeStations(stations) {
+    try {
+      const list = Array.isArray(stations) ? stations.map((station) => ({
+        id: station.id,
+        name: station.name,
+        lat: station.lat,
+        lon: station.lon,
+        lng: station.lng,
+        distance: station.distance,
+        lines: Array.isArray(station.lines) ? station.lines : []
+      })) : [];
+      return encodeURIComponent(JSON.stringify(list));
+    } catch (e) {
+      return '';
+    }
+  },
+
+  applySelectedStation(query) {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    const pickFromUri = query && query.selectedStationName;
+    const name = pickFromUri || this.selectedStationName;
+    if (!name) return;
+
+    if (pickFromUri) {
+      this.suppressAutoLocateUntil = Date.now() + SUPPRESS_AUTO_LOCATE_AFTER_STATION_MS;
+      this.pushInterconnectFlowLog('站台页选定→暂缓自动定位');
+    }
+
+    const lat = (query && query.selectedStationLat) || this.selectedStationLat;
+    const lon =
+      (query && (query.selectedStationLon || query.selectedStationLng)) ||
+      this.selectedStationLon ||
+      this.selectedStationLng;
+    const station = {
+      name,
+      lat,
+      lon,
+      lng: lon
+    };
+
+    this.selectedStationName = '';
+    this.selectedStationLat = '';
+    this.selectedStationLon = '';
+    this.selectedStationLng = '';
+    this.stationName = name;
+    this.lineDirection = '1';
+    this.refreshStationLines(station);
+  },
+
+  async refreshStationLines(station) {
+    if (this.homeViewMode === 'vibe') {
+      return;
+    }
+    if (this.isBusLoading) return;
+    const hadList = Array.isArray(this.busList) && this.busList.length > 0;
+    this.isBusLoading = true;
+    if (!hadList) {
+      this.loadingBus = true;
+      this.loadingText = '正在解析站台…';
+    }
+    try {
+      await this.hydrateStation209(station);
+      if (!hadList) {
+        this.loadingText = '正在加载线路…';
+      }
+      const lines = await this.fetchStationLines(station);
+      const linesForUi = lines.length ? await this.enrichHomeLinesWith104(lines) : [];
+      if (linesForUi.length > 0) {
+        this.applyBusList(linesForUi);
+      } else if (!hadList) {
+        this.applyBusList([]);
+        prompt.showToast({ message: '该站点暂无到站预报', duration: 2000 });
+      }
+      if (hadList) {
+        prompt.showToast({ message: '更新完成', duration: 1500 });
+      }
+    } catch (e) {
+      if (!hadList) {
+        this.applyBusList([]);
+      }
+      prompt.showToast({ message: '站点线路加载失败', duration: 2000 });
+    } finally {
+      this.isBusLoading = false;
+      this.loadingBus = false;
+      this.isRefreshing = false;
+    }
+  },
+
+  getBusRoute(item) {
+    if (!item) return '--';
+    return String(item.lineName || item.route || item.linename || '--').replace('路', '');
+  },
+
+  getBusDest(item) {
+    if (!item) return '未知方向';
+    const down = item.routeNameDown || item.endStationDown || item.downTerm || item.terminalDown;
+    const up = item.routeNameUp || item.endStationUp || item.upTerm || item.terminalUp;
+    const isDown = String(this.lineDirection) === '2';
+    if (isDown && down) return down;
+    if (!isDown && up) return up;
+    if (isDown && up) return up;
+    if (!isDown && down) return down;
+    return item.to || item.dest || item.endStation || '未知方向';
+  },
+
+  getBusEta(item) {
+    return this.parseEta(item, 0);
+  },
+
+  getBusStops(item) {
+    if (!item) return 0;
+    return item.stops || this.parseStops(item, this.parseEta(item, 0));
+  },
+
+  getRouteTime(item) {
+    if (!item) return '';
+    const eta = this.getBusEta(item);
+    return `${eta} 分钟`;
+  },
+
+  openRoute(item) {
+    if (!item) return;
+
+    const linename = this.getBusRoute(item);
+    const direction = String(item.upperOrDown != null ? item.upperOrDown : 1);
+    const stationorder = String(item.stationOrder != null ? item.stationOrder : 0);
+
+    if (!linename || linename === '--') {
+      prompt.showToast({ message: '线路名无效', duration: 2000 });
+      return;
+    }
+
+    router.push({
+      uri: '/pages/busDetail',
+      params: {
+        linename,
+        direction,
+        stationorder
+      }
+    });
+  },
+
+  onBusListScroll(e) {
+    const scrollY = e && typeof e.scrollY === 'number' ? e.scrollY : 0;
+    this.updateBusScrollbar(scrollY);
+  },
+
+  onBusListScrollEnd() {
+    this.scheduleHideBusScrollbar();
+  },
+
+  onBusListScrollTop() {
+    this.updateBusScrollbar(0);
+    this.scheduleHideBusScrollbar();
+  },
+
+  onBusListScrollBottom() {
+    const maxScroll = this.getBusMaxScroll();
+    this.updateBusScrollbar(maxScroll);
+    this.scheduleHideBusScrollbar();
+  },
+
+  getBusMaxScroll() {
+    const totalHeight = Array.isArray(this.busList) ? this.busList.length * BUS_CARD_ITEM_HEIGHT : 0;
+    return Math.max(totalHeight - this.busListHeight, 0);
+  },
+
+  updateBusScrollbar(scrollY, shouldShow) {
+    const totalHeight = Array.isArray(this.busList) ? this.busList.length * BUS_CARD_ITEM_HEIGHT : 0;
+    if (totalHeight <= this.busListHeight) {
+      this.busScrollbarVisible = false;
+      this.busScrollbarHeight = BUS_SCROLLBAR_TRACK_HEIGHT;
+      this.busScrollbarTop = 0;
+      return;
+    }
+
+    const maxScroll = this.getBusMaxScroll();
+    const safeScroll = Math.max(0, Math.min(scrollY || 0, maxScroll));
+    const thumbHeight = Math.max(Math.floor(this.busListHeight / totalHeight * BUS_SCROLLBAR_TRACK_HEIGHT), BUS_SCROLLBAR_MIN_HEIGHT);
+    const maxTop = BUS_SCROLLBAR_TRACK_HEIGHT - thumbHeight;
+    const nextTop = maxScroll > 0 ? Math.floor(safeScroll / maxScroll * maxTop) : 0;
+
+    if (this.busScrollbarHeight !== thumbHeight) {
+      this.busScrollbarHeight = thumbHeight;
+    }
+    if (this.busScrollbarTop !== nextTop) {
+      this.busScrollbarTop = nextTop;
+    }
+    if (shouldShow !== false && !this.busScrollbarVisible) {
+      this.busScrollbarVisible = true;
+    }
+  },
+
+  scheduleHideBusScrollbar() {
+    if (this.busScrollbarTimer) {
+      clearTimeout(this.busScrollbarTimer);
+      this.busScrollbarTimer = null;
+    }
+
+    this.busScrollbarTimer = setTimeout(() => {
+      this.busScrollbarVisible = false;
+      this.busScrollbarTimer = null;
+    }, SCROLLBAR_HIDE_DELAY);
+  },
+
+  hideBusScrollbar() {
+    if (this.busScrollbarTimer) {
+      clearTimeout(this.busScrollbarTimer);
+      this.busScrollbarTimer = null;
+    }
+    this.busScrollbarVisible = false;
+  }
+}
+</script>
+
+<style>
+.page {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 336px;
+  background-color: #16212b;
+  overflow: hidden;
+}
+
+.home-view {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 336px;
+  background-color: #16212b;
+  overflow: hidden;
+}
+
+.top-bar {
+  position: absolute;
+  left: 0px;
+  top: 14px;
+  width: 336px;
+  height: 106px;
+}
+
+.round-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 27px;
+  justify-content: center;
+  align-items: center;
+}
+
+.location-btn {
+  position: absolute;
+  left: 28px;
+  top: 0px;
+  background-color: rgba(255,255,255,0.10);
+}
+
+.direction-btn-home {
+  position: absolute;
+  left: 254px;
+  top: 0px;
+  background-color: #f97316;
+}
+
+.direction-btn-home-text {
+  width: 54px;
+  line-height: 54px;
+  font-size: 19px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+}
+
+.location-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.title-center {
+  position: absolute;
+  left: 88px;
+  top: 0px;
+  width: 160px;
+  height: 54px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.time-text {
+  width: 160px;
+  line-height: 54px;
+  font-size: 34px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+}
+
+.station-pill {
+  position: absolute;
+  left: 20px;
+  top: 64px;
+  width: 296px;
+  height: 42px;
+  border-radius: 21px;
+  border: 2px solid rgba(249,115,22,0.22);
+  background-color: rgba(255,255,255,0.06);
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding: 0px 8px;
+}
+
+.station-bus-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.station-name {
+  width: 226px;
+  line-height: 38px;
+  font-size: 24px;
+  font-weight: bold;
+  color: #fb923c;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.station-arrow {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.card-stage {
+  position: absolute;
+  left: 0px;
+  top: 126px;
+  width: 336px;
+  height: 200px;
+  overflow: hidden;
+}
+
+.location-debug {
+  position: absolute;
+  left: 20px;
+  top: 0px;
+  width: 296px;
+  height: 28px;
+  border-radius: 8px;
+  background-color: rgba(52,211,153,0.18);
+  justify-content: center;
+  align-items: center;
+}
+
+.location-debug-text {
+  width: 276px;
+  line-height: 26px;
+  font-size: 17px;
+  font-weight: bold;
+  color: #34d399;
+  text-align: center;
+}
+
+.bus-card-list {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 200px;
+  padding: 8px 20px 20px 20px;
+  background-color: transparent;
+}
+
+.bus-card-list-debug {
+  padding: 36px 20px 20px 20px;
+}
+
+.bus-card-item {
+  width: 296px;
+  height: 126px;
+  margin-bottom: 12px;
+  background-color: transparent;
+}
+
+.bus-card-simple {
+  width: 296px;
+  height: 126px;
+  border-radius: 24px;
+  border: 2px solid rgba(255,255,255,0.06);
+  background-color: rgba(255,255,255,0.06);
+  padding: 16px 18px;
+  flex-direction: column;
+}
+
+.bus-line-row {
+  width: 260px;
+  height: 34px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bus-line-name {
+  width: 150px;
+  line-height: 34px;
+  font-size: 29px;
+  font-weight: bold;
+  color: #ffffff;
+  text-overflow: ellipsis;
+}
+
+.bus-eta-pill {
+  width: 88px;
+  height: 28px;
+  border-radius: 6px;
+  background-color: rgba(52,211,153,0.20);
+  line-height: 28px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #34d399;
+  text-align: center;
+}
+
+.bus-info-row {
+  margin-top: 12px;
+  width: 260px;
+  height: 56px;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.bus-dest-text {
+  width: 260px;
+  line-height: 28px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #ffffff;
+  text-overflow: ellipsis;
+}
+
+.bus-stops-text {
+  width: 260px;
+  line-height: 24px;
+  font-size: 18px;
+  color: #9ca3af;
+  text-align: left;
+}
+
+.bus-scrollbar-track {
+  position: absolute;
+  right: 7px;
+  top: 106px;
+  width: 8px;
+  height: 132px;
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.12);
+}
+
+.bus-scrollbar-visible {
+  visibility: visible;
+}
+
+.bus-scrollbar-hidden {
+  visibility: hidden;
+}
+
+.bus-scrollbar-thumb {
+  position: absolute;
+  left: 0px;
+  width: 8px;
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.82);
+}
+
+.state-layer {
+  position: absolute;
+  left: 0px;
+  top: 126px;
+  width: 336px;
+  height: 200px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.empty-icon {
+  width: 96px;
+  height: 96px;
+}
+
+.state-text {
+  margin-top: 12px;
+  width: 300px;
+  line-height: 40px;
+  font-size: 28px;
+  font-weight: bold;
+  color: rgba(255,255,255,0.78);
+  text-align: center;
+}
+
+.edge-back-zone {
+  position: absolute;
+  left: 0px;
+  top: 126px;
+  width: 36px;
+  height: 210px;
+  background-color: rgba(0,0,0,0.01);
+}
+
+.interconnect-flow-log {
+  position: absolute;
+  left: 8px;
+  bottom: 10px;
+  width: 318px;
+  padding: 6px 8px;
+  background-color: rgba(0, 0, 0, 0.55);
+  border-radius: 8px;
+  z-index: 30;
+}
+
+.interconnect-flow-log-text {
+  font-size: 14px;
+  color: #6ee7b7;
+  line-height: 20px;
+}
+
+.vibe-view {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 336px;
+  background-color: #0f172a;
+  flex-direction: column;
+  align-items: center;
+}
+
+.vibe-top-bar {
+  width: 336px;
+  height: 54px;
+  margin-top: 14px;
+  justify-content: center;
+  align-items: center;
+}
+
+.vibe-time-text {
+  width: 200px;
+  line-height: 54px;
+  font-size: 32px;
+  font-weight: bold;
+  color: #e2e8f0;
+  text-align: center;
+}
+
+.vibe-light-wrap {
+  width: 220px;
+  height: 220px;
+  margin-top: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.vibe-light-img {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+}
+
+.vibe-status-label {
+  width: 300px;
+  margin-top: 4px;
+  line-height: 36px;
+  font-size: 26px;
+  font-weight: bold;
+  color: #f8fafc;
+  text-align: center;
+}
+
+.vibe-error-text {
+  width: 300px;
+  line-height: 28px;
+  font-size: 18px;
+  color: #f87171;
+  text-align: center;
+}
+
+.vibe-hint-text {
+  position: absolute;
+  left: 0px;
+  bottom: 16px;
+  width: 336px;
+  line-height: 24px;
+  font-size: 16px;
+  color: rgba(148, 163, 184, 0.85);
+  text-align: center;
+}
+
+</style>

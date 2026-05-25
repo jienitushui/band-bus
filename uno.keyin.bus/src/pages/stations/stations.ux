@@ -1,0 +1,373 @@
+<template>
+  <div class="page" style="height: {{pageHeight}}px;">
+    <div class="station-nav">
+      <div class="round-btn back-btn" @click="back">
+        <image static src="/common/images/icon_back1.png" class="back-icon" />
+      </div>
+      <text static class="station-title">附近站台</text>
+      <div class="nav-placeholder"></div>
+    </div>
+
+    <list class="station-list" bounces="false" style="height: {{stationListHeight}}px;" onscroll="onStationScroll" onscrollend="onStationScrollEnd" onscrolltop="onStationScrollTop" onscrollbottom="onStationScrollBottom">
+      <list-item for="{{nearbyStations}}" type="station" class="station-item" @click="selectStation($item)">
+        <div class="station-item-header">
+          <text class="station-item-name" style="lines:1;">{{$item.name}}</text>
+          <text class="station-distance">{{$item.distance}}m</text>
+        </div>
+        <div class="station-lines">
+          <text for="{{$item.lines}}" class="line-tag">{{$item}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <div class="station-scrollbar-track {{stationScrollbarVisible ? 'station-scrollbar-visible' : 'station-scrollbar-hidden'}}" style="top: {{stationScrollbarTrackTop}}px;">
+      <div class="station-scrollbar-thumb" style="height: {{stationScrollbarHeight}}px; top: {{stationScrollbarTop}}px;"></div>
+    </div>
+
+    <div class="edge-back-zone" style="height: {{stationListHeight}}px;" @swipe="onEdgeBackSwipe"></div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import device from '@system.device';
+
+const DESIGN_WIDTH = 336;
+const DEFAULT_PAGE_HEIGHT = 336;
+const STATION_LIST_TOP = 82;
+const STATION_ITEM_HEIGHT = 120;
+const STATION_SCROLLBAR_TRACK_HEIGHT = 132;
+const STATION_SCROLLBAR_MIN_HEIGHT = 34;
+const SCROLLBAR_HIDE_DELAY = 650;
+
+export default {
+  protected: {
+    stationName: '',
+    myLat: '',
+    myLng: '',
+    stations: ''
+  },
+  private: {
+    pageHeight: DEFAULT_PAGE_HEIGHT,
+    stationListHeight: DEFAULT_PAGE_HEIGHT - STATION_LIST_TOP,
+    stationScrollbarTrackTop: 166,
+    stationScrollbarVisible: false,
+    stationScrollbarHeight: 104,
+    stationScrollbarTop: 0,
+    stationScrollbarTimer: null,
+    nearbyStations: []
+  },
+
+  onInit() {
+    this.initLayout();
+    this.applyStationsParam();
+  },
+
+  onDestroy() {
+    this.hideStationScrollbar();
+    this.nearbyStations = null;
+  },
+
+  initLayout() {
+    if (!device || typeof device.getInfo !== 'function') {
+      this.applyLayout(DEFAULT_PAGE_HEIGHT);
+      return;
+    }
+
+    device.getInfo({
+      success: (info) => {
+        const width = Number(info && info.screenWidth) || DESIGN_WIDTH;
+        const height = Number(info && info.screenHeight) || DEFAULT_PAGE_HEIGHT;
+        const scaledHeight = Math.floor(height * DESIGN_WIDTH / width);
+        this.applyLayout(scaledHeight);
+      },
+      fail: () => {
+        this.applyLayout(DEFAULT_PAGE_HEIGHT);
+      }
+    });
+  },
+
+  applyLayout(height) {
+    const safeHeight = Math.max(Math.min(Number(height) || DEFAULT_PAGE_HEIGHT, 520), 300);
+    const stationHeight = Math.max(safeHeight - STATION_LIST_TOP, 200);
+
+    this.pageHeight = safeHeight;
+    this.stationListHeight = stationHeight;
+    this.stationScrollbarTrackTop = STATION_LIST_TOP + Math.max(Math.floor((stationHeight - STATION_SCROLLBAR_TRACK_HEIGHT) / 2), 8);
+  },
+
+  applyStationsParam() {
+    if (!this.stations) return;
+
+    try {
+      const list = JSON.parse(decodeURIComponent(this.stations));
+      if (Array.isArray(list) && list.length) {
+        this.nearbyStations = list;
+      }
+    } catch (e) {}
+  },
+
+  back() {
+    router.back();
+  },
+
+  onEdgeBackSwipe(e) {
+    if (e && e.direction === 'right') {
+      this.back();
+    }
+  },
+
+  selectStation(station) {
+    if (!station) return;
+
+    const lon = station.lon || station.lng || '';
+    router.push({
+      uri: '/pages/index',
+      params: {
+        selectedStationName: station.name || '',
+        selectedStationLat: station.lat == null ? '' : String(station.lat),
+        selectedStationLon: lon == null ? '' : String(lon)
+      }
+    });
+  },
+
+  onStationScroll(e) {
+    const scrollY = e && typeof e.scrollY === 'number' ? e.scrollY : 0;
+    this.updateStationScrollbar(scrollY);
+    this.scheduleHideStationScrollbar();
+  },
+
+  onStationScrollEnd() {
+    this.scheduleHideStationScrollbar();
+  },
+
+  onStationScrollTop() {
+    this.updateStationScrollbar(0);
+    this.scheduleHideStationScrollbar();
+  },
+
+  onStationScrollBottom() {
+    const maxScroll = this.getStationMaxScroll();
+    this.updateStationScrollbar(maxScroll);
+    this.scheduleHideStationScrollbar();
+  },
+
+  getStationMaxScroll() {
+    const totalHeight = Array.isArray(this.nearbyStations) ? this.nearbyStations.length * STATION_ITEM_HEIGHT : 0;
+    return Math.max(totalHeight - this.stationListHeight, 0);
+  },
+
+  updateStationScrollbar(scrollY, shouldShow) {
+    const totalHeight = Array.isArray(this.nearbyStations) ? this.nearbyStations.length * STATION_ITEM_HEIGHT : 0;
+    if (totalHeight <= this.stationListHeight) {
+      this.stationScrollbarVisible = false;
+      this.stationScrollbarHeight = STATION_SCROLLBAR_TRACK_HEIGHT;
+      this.stationScrollbarTop = 0;
+      return;
+    }
+
+    const maxScroll = this.getStationMaxScroll();
+    const safeScroll = Math.max(0, Math.min(scrollY || 0, maxScroll));
+    const thumbHeight = Math.max(Math.floor(this.stationListHeight / totalHeight * STATION_SCROLLBAR_TRACK_HEIGHT), STATION_SCROLLBAR_MIN_HEIGHT);
+    const maxTop = STATION_SCROLLBAR_TRACK_HEIGHT - thumbHeight;
+
+    this.stationScrollbarHeight = thumbHeight;
+    this.stationScrollbarTop = maxScroll > 0 ? Math.floor(safeScroll / maxScroll * maxTop) : 0;
+    this.stationScrollbarVisible = shouldShow !== false;
+  },
+
+  scheduleHideStationScrollbar() {
+    if (this.stationScrollbarTimer) {
+      clearTimeout(this.stationScrollbarTimer);
+      this.stationScrollbarTimer = null;
+    }
+
+    this.stationScrollbarTimer = setTimeout(() => {
+      this.stationScrollbarVisible = false;
+      this.stationScrollbarTimer = null;
+    }, SCROLLBAR_HIDE_DELAY);
+  },
+
+  hideStationScrollbar() {
+    if (this.stationScrollbarTimer) {
+      clearTimeout(this.stationScrollbarTimer);
+      this.stationScrollbarTimer = null;
+    }
+    this.stationScrollbarVisible = false;
+  }
+}
+</script>
+
+<style>
+.page {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 336px;
+  background-color: #121921;
+  overflow: hidden;
+}
+
+.station-nav {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 82px;
+  background-color: rgba(18,25,33,0.96);
+  border-bottom: 2px solid rgba(255,255,255,0.05);
+}
+
+.round-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 27px;
+  justify-content: center;
+  align-items: center;
+}
+
+.back-btn {
+  position: absolute;
+  left: 28px;
+  top: 14px;
+  width: 54px;
+  height: 54px;
+  border-radius: 27px;
+  background-color: rgba(255,255,255,0.10);
+  justify-content: center;
+  align-items: center;
+}
+
+.back-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.station-title {
+  position: absolute;
+  left: 80px;
+  top: 20px;
+  width: 176px;
+  line-height: 42px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+}
+
+.nav-placeholder {
+  position: absolute;
+  left: 254px;
+  top: 14px;
+  width: 54px;
+  height: 54px;
+}
+
+.station-list {
+  position: absolute;
+  left: 0px;
+  top: 82px;
+  width: 336px;
+  height: 260px;
+  padding: 12px 20px 26px 20px;
+  background-color: #121921;
+}
+
+.station-item {
+  width: 296px;
+  height: 106px;
+  margin-bottom: 14px;
+  border-radius: 26px;
+  border: 2px solid rgba(255,255,255,0.05);
+  background-color: rgba(255,255,255,0.06);
+  padding: 18px;
+  flex-direction: column;
+}
+
+.station-item-header {
+  width: 260px;
+  height: 34px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.station-item-name {
+  width: 180px;
+  line-height: 32px;
+  font-size: 25px;
+  font-weight: bold;
+  color: #ffffff;
+  text-overflow: ellipsis;
+}
+
+.station-distance {
+  width: 70px;
+  height: 28px;
+  border-radius: 6px;
+  background-color: rgba(52,211,153,0.12);
+  line-height: 28px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #34d399;
+  text-align: center;
+}
+
+.station-lines {
+  margin-top: 12px;
+  width: 260px;
+  height: 28px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.line-tag {
+  margin-right: 6px;
+  height: 26px;
+  min-width: 34px;
+  padding: 0px 8px;
+  border-radius: 5px;
+  background-color: rgba(255,255,255,0.10);
+  line-height: 26px;
+  font-size: 17px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.station-scrollbar-track {
+  position: absolute;
+  right: 7px;
+  top: 166px;
+  width: 8px;
+  height: 132px;
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.12);
+}
+
+.station-scrollbar-visible {
+  visibility: visible;
+}
+
+.station-scrollbar-hidden {
+  visibility: hidden;
+}
+
+.station-scrollbar-thumb {
+  position: absolute;
+  left: 0px;
+  width: 8px;
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.82);
+}
+
+.edge-back-zone {
+  position: absolute;
+  left: 0px;
+  top: 82px;
+  width: 24px;
+  height: 254px;
+  background-color: rgba(0,0,0,0.01);
+}
+</style>

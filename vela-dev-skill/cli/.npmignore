@@ -1,0 +1,7 @@
+# cli/.npmignore
+__pycache__/
+*.pyc
+*.pyo
+.git/
+tests/
+build_index.py  # 用户不需要构建脚本，只需要检索器

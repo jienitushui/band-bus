@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/home_screen_bg"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/panelHomeHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="0dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/textCityName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/home_city_default"
+                            android:textColor="#111827"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:text="▼"
+                            android:textColor="#374151"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSyncWatchLocation"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/action_sync_watch_short"
+                        android:textColor="#2563EB"
+                        app:icon="@android:drawable/ic_menu_mylocation"
+                        app:iconGravity="textStart"
+                        app:iconPadding="4dp"
+                        app:iconTint="#2563EB" />
+
+                    <ImageButton
+                        android:id="@+id/btnOpenSettings"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/title_settings"
+                        android:src="@android:drawable/ic_menu_preferences"
+                        android:tint="#4B5563" />
+                </LinearLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/searchInputLayout"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    app:boxBackgroundColor="#F3F4F6"
+                    app:boxCornerRadiusBottomEnd="22dp"
+                    app:boxCornerRadiusBottomStart="22dp"
+                    app:boxCornerRadiusTopEnd="22dp"
+                    app:boxCornerRadiusTopStart="22dp"
+                    app:boxStrokeWidth="0dp"
+                    app:boxStrokeWidthFocused="0dp"
+                    app:hintEnabled="false"
+                    app:startIconDrawable="@android:drawable/ic_menu_search"
+                    app:startIconTint="#9CA3AF">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputSearch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/home_search_hint"
+                        android:inputType="text"
+                        android:maxLines="1"
+                        android:textColorHint="#9CA3AF"
+                        android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tabNearby"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="6dp"
+                        android:text="@string/tab_nearby_stations"
+                        android:textColor="#111827"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tabRealtime"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="24dp"
+                        android:paddingBottom="6dp"
+                        android:text="@string/tab_realtime_bus"
+                        android:textColor="#6B7280"
+                        android:textSize="16sp" />
+                </LinearLayout>
+
+                <View
+                    android:id="@+id/tabIndicator"
+                    android:layout_width="72dp"
+                    android:layout_height="3dp"
+                    android:background="#2563EB" />
+
+                <TextView
+                    android:id="@+id/textWatchStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="#6B7280"
+                    android:textSize="12sp"
+                    tools:text="手表：已连接" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerHomeStations"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingHorizontal="16dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="88dp"
+                tools:listitem="@layout/item_station_card" />
+
+            <ScrollView
+                android:id="@+id/scrollPlaceholderTab"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true"
+                android:padding="24dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/textPlaceholderTab"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:lineSpacingExtra="4dp"
+                    android:textColor="#6B7280"
+                    android:textSize="15sp"
+                    tools:text="@string/placeholder_route_plan" />
+            </ScrollView>
+        </FrameLayout>
+
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            android:id="@+id/bottomNavigation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@android:color/white"
+            app:itemIconTint="@color/bottom_nav_color"
+            app:itemTextColor="@color/bottom_nav_color"
+            app:labelVisibilityMode="labeled"
+            app:menu="@menu/bottom_nav_main" />
+    </LinearLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

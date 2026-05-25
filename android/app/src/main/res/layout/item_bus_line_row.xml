@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingVertical="12dp"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/busLineId"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#111827"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            tools:text="K1路" />
+
+        <TextView
+            android:id="@+id/busDirection"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="#6B7280"
+            android:textSize="12sp"
+            tools:text="开往 闽台缘博物馆" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/busStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#2563EB"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            tools:text="3 分钟" />
+
+        <TextView
+            android:id="@+id/busStatusDetail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="#9CA3AF"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:text="点击查看发车预测" />
+    </LinearLayout>
+</LinearLayout>

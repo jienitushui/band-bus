@@ -1,0 +1,21 @@
+# 复制到 /etc/systemd/system/cursor-status.service 后：
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cursor-status
+
+[Unit]
+Description=Cursor Status Monitor API
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/cursor-status-monitor
+Environment=CURSOR_STATUS_PORT=3000
+Environment=CURSOR_STATUS_TOKEN=请改成随机密钥
+Environment=CURSOR_STATUS_QUIET=1
+ExecStart=/usr/bin/python3 /opt/cursor-status-monitor/server/cursor_status_server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

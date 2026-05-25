@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="description" content="">
+<meta name="keywords" content="">
+<meta name="viewport"
+	content="width=device-width, initial-scale=1 user-scalable=0">
+<title></title>
+
+<!-- Set render engine for 360 browser -->
+<meta name="renderer" content="webkit">
+
+<!-- No Baidu Siteapp-->
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+<link rel="icon" type="image/png" href="{{assets}}i/favicon.png">
+
+<!-- Add to homescreen for Chrome on Android -->
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" sizes="192x192" href="{{assets}}i/app-icon72x72@2x.png">
+
+<!-- Add to homescreen for Safari on iOS -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Amaze UI" />
+<meta name="viewport"
+	content="width=device-width, initial-scale=1 user-scalable=0">
+<link rel="apple-touch-icon-precomposed"
+	href="assets/i/app-icon72x72@2x.png">
+
+<!-- Tile icon for Win8 (144x144 + tile color) -->
+<meta name="msapplication-TileImage"
+	content="assets/i/app-icon72x72@2x.png">
+<meta name="msapplication-TileColor" content="#0e90d2">
+
+<script type="text/javascript">
+	var cnzz_protocol = (("https:" == document.location.protocol) ? " https://"
+			: " https://");
+	document
+			.write(unescape("%3Cspan style='display:none;' id='cnzz_stat_icon_1278716313'%3E%3C/span%3E%3Cscript src='"
+					+ cnzz_protocol
+					+ "s9.cnzz.com/z_stat.php%3Fid%3D1278716313' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<link rel="stylesheet" href="css/artDialog.css">
+<link rel="stylesheet" href="assets/css/amazeui.min.css">
+<link rel="stylesheet" href="css/mybus.css?version=1.0.4">
+
+<script type="text/javascript" src="js/artDialog.js"></script>
+<script src="js/jquery-2.2.4.min.js"></script>
+<script src="assets/js/amazeui.min.js"></script>
+<script type="text/javascript"
+	src="https://webapi.amap.com/maps?v=1.4.15&key=45bf007bbf84b9982e721aa5bd259b1f&plugin=AMap.CitySearch,AMap.PlaceSearch"></script>
+<script src="js/mybus.js?version=1.0.16"></script>
+<script src="js/encrypt-decrypt.js?version=1.0.1"></script>
+<style type="text/css">
+body {
+	min-height: 95vh;
+}
+
+.home-main {
+	margin-bottom: 100px
+}
+
+.search-search-view {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 10px;
+}
+
+.search-search-view-box {
+	display: flex;
+	background-color: #f0f0f0;
+	width: 100%;
+	padding: 5px;
+	border-radius: 20px;
+	align-items: center;
+	margin-left: 10px;
+}
+
+.search-search-view-box input {
+	background-color: #f0f0f0;
+	border-style: none;
+	width: 100%;
+}
+
+.search-search-view-box input:FOCUS {
+	border-style: none
+}
+
+.search-search-view-cancel {
+	width: 60px;
+	font-weight: 550;
+	text-align: right;
+	margin-right: 10px;
+}
+
+.am-slider-default .am-control-nav {
+	bottom: 5px;
+}
+
+.am-slider-default .am-control-nav li a {
+	opacity: 0.8;
+	background-color: #fff;
+}
+
+.am-slider-default {
+	margin: 0px;
+}
+
+#review_box {
+	width: 100%;
+	height: 35px;
+	overflow: hidden;
+	margin: 0 auto;
+	border-bottom: 1px solid #f0f0f0;
+	text-align: center;
+}
+
+.new-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	word-wrap: break-word;
+	white-space: normal !important;
+	-webkit-line-clamp: 1;
+	-webkit-box-orient: vertical;
+	display: -webkit-box;
+	width: 80%;
+	text-align: left;
+}
+
+.footer {
+	color: #999;
+	position: absolute;
+	bottom: 0;
+	text-align: center;
+	width: 100%;
+	margin-bottom: 40px;
+	z-index: -1000
+}
+
+.footer-view {
+	height: 150px;
+	width: 100%;
+	opacity: 0.5;
+}
+
+.footer-img {
+	height: 150px;
+	width: 100%
+}
+
+.footer .phone {
+	font-weight: bold;
+	color: #00ae7e;
+}
+
+.hide {
+	display: none;
+}
+
+#banner {
+	border-radius: 10px;
+	margin: 10px;
+}
+
+#wuhai {
+	font-size: 14px;
+}
+
+.no-nearsta {
+	width: 100%;
+	height: auto;
+	text-align: center;
+	margin-top: 50px;
+	color: #999;
+	font-size: 14px;
+}
+
+.company-view {
+	display: none;
+	align-items: center;
+	justify-content: space-around;
+	margin: 10px;
+}
+
+.company-view div {
+	margin: 0 2px;
+	font-size: 12px;
+	background-color: #0095ffc7;
+	padding: 4px 5px;
+	border-radius: 5px;
+	text-align: center;
+	color: #ffffff;
+	width: 60px;
+}
+</style>
+
+</head>
+<body>
+	<!--------------------------主页start------------------------>
+
+	<div class="home-main">
+		<!--
+				<div class="logo">
+			<div class="logo-left">
+				<img class="logo-img1" src="images/bg_logo@2x.png">
+				<div class="logo-text">宁德公交</div>
+			</div>
+			<img class="logo-img2" src="images/bg_biaoyu@2x.png">
+		</div>
+
+		<div class="logo">
+			<div class="logo-left" onclick="download();">
+				<img class="logo-img1" src="images/bg_logo@2x.png"> <img
+					class="logo-img4" src="images/download.png">
+				<div class="logo-text">濮阳市众意公共交通有限公司</div>
+			</div>
+			<div class="logo-right" onclick="toCityList();">
+				<div class="cityName" id="cityName">厦门市</div>
+				<img class="logo-img2" src="images/down.png">
+			</div>
+		</div> -->
+
+
+
+		<div class="home-title" id="home-title">
+			<div class="title-l" id="cityname"></div>
+			<div class="title-r">
+				<img id="citylogo" src="">
+				<div id="company" class="title-r-text"></div>
+			</div>
+		</div>
+		<div id="banner" class="hide">
+			<img alt="" src="images/banner.png" width="100%">
+		</div>
+
+		<div id="home-main">
+			<!-- <ul class="home-main-view">
+				<li id="near-bar"><div>
+						<img width="30px" height="30px" src="images/home_icon_near.png">
+						<span class="home-main-item-text">附近站点</span>
+					</div></li>
+				<li><div>
+						<img width="35px" height="35px" src="images/home_icon_search.png">
+						<span class="home-main-item-text">线路站点</span>
+					</div></li>
+				<li><div>
+						<img width="35px" height="35px" src="images/home_icon_qunan.png">
+						<span class="home-main-item-text">去哪查询</span>
+					</div></li>
+				<li><div>
+						<img width="35px" height="35px" src="images/home_icon_news.png">
+						<span class="home-main-item-text">资讯公告</span>
+					</div></li>
+			</ul>
+			<ul class="tab-content">
+				<li id="near-bar-content"><div id="index-text">附近</div></li>
+				<li>
+					<div class="home-search-view">
+						<img class="home-search-view-img" src="images/icon_search.png">
+						<input type="text" id="input_line" placeholder="请输入线路、站点"
+							oninput="searchLineAnStation();">
+					</div>
+				</li>
+				<li>
+					<div class="home-search-view">
+						<img class="home-search-view-qiehuan"
+							src="images/home_icon_qiehuan.png">
+						<div class="home-search-view-box">
+							<input type="text" id="input_start" placeholder="请输入起点"
+								oninput="searchTransferPoint(1);">
+							<div class="home-search-view-box-line"></div>
+							<input type="text" id="input_end" placeholder="请输入终点"
+								oninput="searchTransferPoint(2);">
+						</div>
+					</div>
+				</li>
+				<li></li>
+			</ul> -->
+		</div>
+		<div class="company-view hide" id="xijiu-company">
+			<div onclick="searchAllLineXiJiu('习水→厂区')">习水→厂区</div>
+			<div onclick="searchAllLineXiJiu('厂区→习水')">厂区→习水</div>
+			<div onclick="searchAllLineXiJiu('厂区上行')">厂区（上行）</div>
+			<div onclick="searchAllLineXiJiu('厂区下行')">厂区（下行）</div>
+		</div>
+
+		<div class="company-view" id="leshan-company">
+			<div onclick="searchAllLineLeShan('市中区')">市中区</div>
+			<div onclick="searchAllLineLeShan('城际线路')">城际线路</div>
+			<div onclick="searchAllLineLeShan('五通桥')">五通桥</div>
+			<div onclick="searchAllLineLeShan('夹江')">夹江</div>
+			<div onclick="searchAllLineLeShan('沙湾')">沙湾</div>
+		</div>
+
+		<div class="history-none" id="history">
+			<div class="history-none-text">搜索历史</div>
+			<img class="history-img" src="images/delete.png"
+				onclick="delHistory()">
+		</div>
+		<ul class="list-view" id="list-view">
+
+		</ul>
+
+		<ul class="news-main" id="new-list-view" style="display: block">
+		</ul>
+
+		<ul class="near-list-view" id="near-list-view">
+			<!-- <div class="no-nearsta">
+				<img style="width: 150px; height: 150px; margin-bottom: 10px;"
+					src="https://static.mygolbs.com/static/miniapp/default_img_route.png">
+				<div>附近暂未搜索到站点</div>
+			</div> -->
+		</ul>
+		<ul class="list-view" id="all-list-view">
+		</ul>
+
+
+
+	</div>
+
+
+	<!-- <a href="http://m.mygolbs.com/download/"><img
+		src="https://wx.mygolbs.com/WxBusServer/download.png"
+		style="position: fixed; width: 147px; height: 70px; bottom: 10%; right: 0;"></a> -->
+
+
+	<img id="download-btn" onclick="toDownload();" class="download-btn"
+		src="https://wx.mygolbs.com/WxBusServer/download.png">
+
+	<div id="footer" class="footer">
+		<div class="footer-view" id="bottom-image">
+			<img src="https://wx.mygolbs.com/WxBusServer/home_bg.png"
+				class="footer-img"></img>
+		</div>
+		<div id="bottom-info">
+			<div id="wuhai" class="hide">
+				<div>数据来源：乌海市行政审批和政务服务局</div>
+				<div>
+					服务热线：<span class="phone">0473-3998312</span>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="container"></div>
+
+
+	<!--------------------------主页end-------------------------->
+	<script type="text/javascript">
+		$(function() {
+			(function($) {
+				$.getUrlParam = function(name) {
+					var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)");
+					var r = window.location.search.substr(1).match(reg);
+					if (r != null)
+						return unescape(r[2]);
+					return null;
+				}
+			})(jQuery);
+			var areacode = $.getUrlParam('areacode');
+			var text = $.getUrlParam('text');
+			if (text) {
+				text = decodeURIComponent(text);
+			}
+			if ("dangtu1214" == areacode) {
+				$("#home-title").addClass("hide");
+			}
+			getCityConfig(areacode, text);
+		});
+	</script>
+</body>
+</html>

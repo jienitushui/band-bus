@@ -1,0 +1,880 @@
+[
+  {
+    "source": "mybus.remote.js",
+    "line": 150,
+    "function": "searchNearBy",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "106",
+    "params": {
+      "CITYNAME": "cityname",
+      "LAT": "lat",
+      "LNG": "lng",
+      "CMD": "\"106\"",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 312,
+    "function": "searchNearLine",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "115",
+    "params": {
+      "CMD": "\"115\"",
+      "CITYNAME": "cityname",
+      "STATIONNAME": "firstStation.name",
+      "MYLAT": "firstStation.lat",
+      "MYLNG": "firstStation.lng",
+      "ALL": "0",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 442,
+    "function": "searchLineByKey",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "114",
+    "params": {
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CMD": "\"114\"",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 501,
+    "function": "searchStationByKey",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "110",
+    "params": {
+      "CMD": "\"110\"",
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 560,
+    "function": "searchLineAnStation",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "102",
+    "params": {
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CMD": "\"102\"",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 641,
+    "function": "searchAllLine",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "119",
+    "params": {
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CMD": "\"119\"",
+      "CITYKEY": "citykey",
+      "KEY": "key"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 789,
+    "function": "searchAllLineLeShan",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "119",
+    "params": {
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CMD": "\"119\"",
+      "CITYKEY": "citykey",
+      "KEY": "\"\""
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 870,
+    "function": "searchAllLineXiJiu",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "119",
+    "params": {
+      "CITYNAME": "\"习酒通勤\"",
+      "CMD": "\"119\"",
+      "CITYKEY": "\"xijiu101401\"",
+      "KEY": "\"\""
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 1263,
+    "function": "getLineDetailsNew",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "103",
+    "params": {
+      "CMD": "\"103\"",
+      "CITYNAME": "cityname",
+      "LINENAME": "linename",
+      "DIRECTION": "direction",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 1749,
+    "function": "getLineSpecialNotice",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "120",
+    "params": {
+      "CMD": "\"120\"",
+      "CITYNAME": "cityname",
+      "LINELIST": "lineliststr"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 1794,
+    "function": "getLineSpecialNotice",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "120",
+    "params": {
+      "CMD": "\"120\"",
+      "CITYNAME": "cityname",
+      "LINELIST": "lineliststr"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 1836,
+    "function": "getLineSpecialNoticeByLines",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "120",
+    "params": {
+      "CMD": "\"120\"",
+      "CITYNAME": "cityname",
+      "LINELIST": "lineliststr"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 1939,
+    "function": "getRealTime",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "104",
+    "params": {
+      "CMD": "\"104\"",
+      "CITYNAME": "cityname",
+      "LINENAME": "linename",
+      "DIRECTION": "direction",
+      "STATIONORDER": "selectStationId",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 2602,
+    "function": "getLineByStation",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "105",
+    "params": {
+      "CMD": "\"105\"",
+      "CITYNAME": "cityname",
+      "STATIONNAME": "stationname",
+      "MYLAT": "''",
+      "MYLNG": "''",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 2659,
+    "function": "getLineByStationV2",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "115",
+    "params": {
+      "CMD": "\"115\"",
+      "CITYNAME": "cityname",
+      "STATIONNAME": "stationname",
+      "MYLAT": "lat",
+      "MYLNG": "lng",
+      "ALL": "1",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 2736,
+    "function": "searchStation",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "209",
+    "params": {
+      "CMD": "\"209\"",
+      "CITYNAME": "cityname",
+      "STATIONNAME": "stationname",
+      "MYLAT": "lat",
+      "MYLNG": "lng",
+      "LAT": "lat",
+      "LNG": "lng",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 2874,
+    "function": "searchTransferPoint",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "110",
+    "params": {
+      "CMD": "\"110\"",
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 3283,
+    "function": "searchTransferReal",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "112",
+    "params": {
+      "CMD": "\"112\"",
+      "CITYNAME": "cityname",
+      "REALLINE": "realLine",
+      "REALDIR": "realDir",
+      "STATIONORDER": "stationOrder",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 3351,
+    "function": "searchTransferReal2",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "112",
+    "params": {
+      "CMD": "\"112\"",
+      "CITYNAME": "cityname",
+      "REALLINE": "realLine",
+      "REALDIR": "realDir",
+      "STATIONORDER": "stationOrder",
+      "STATIONNAME": "stationName",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 3957,
+    "function": "searchTransferDetailReal2",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "113",
+    "params": {
+      "CMD": "\"113\"",
+      "CITYNAME": "cityname",
+      "REALLINE": "realLine",
+      "REALDIR": "realDir",
+      "STATIONORDER": "stationOrder",
+      "STATIONNAME": "stationName",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 4057,
+    "function": "searchTransferDetailReal",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "113",
+    "params": {
+      "CMD": "\"113\"",
+      "CITYNAME": "cityname",
+      "REALLINE": "realLine",
+      "REALDIR": "realDir",
+      "STATIONORDER": "stationOrder",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 4408,
+    "function": "getCityList",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "101",
+    "params": {
+      "CMD": "\"101\""
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 4562,
+    "function": "getNews",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "203",
+    "params": {
+      "CMD": "\"203\"",
+      "CITYNAME": "cityname",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 4605,
+    "function": "getNewsList",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "203",
+    "params": {
+      "CMD": "\"203\"",
+      "CITYNAME": "cityname",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 4678,
+    "function": "cityInfo",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "204",
+    "params": {
+      "CMD": "\"204\"",
+      "CITYNAME": "cityname"
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 4948,
+    "function": "getDepart",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "116",
+    "params": {
+      "CMD": "\"116\"",
+      "CITYNAME": "cityname",
+      "DIRECTION": "upperOrDown",
+      "ROUTEID": "routeId",
+      "CITYKEY": "\"\""
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 5040,
+    "function": "getDepartV2",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "207",
+    "params": {
+      "CMD": "\"207\"",
+      "CITYNAME": "cityName",
+      "DIRECTION": "uod",
+      "ROUTEID": "routeId",
+      "CITYKEY": "\"\""
+    }
+  },
+  {
+    "source": "mybus.remote.js",
+    "line": 5194,
+    "function": "searchBusLineByStationQRCodeNew",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "117",
+    "params": {
+      "CITYCODE": "citycode",
+      "STATIONID": "stationid",
+      "CMD": "\"117\""
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 299,
+    "function": "searchNearBy",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "106",
+    "params": {
+      "CITYNAME": "cityname",
+      "LAT": "lat",
+      "LNG": "lng",
+      "CMD": "\"106\"",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 623,
+    "function": "searchNearLine",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "115",
+    "params": {
+      "CMD": "\"115\"",
+      "CITYNAME": "cityname",
+      "STATIONNAME": "firstStation.name",
+      "MYLAT": "firstStation.lat",
+      "MYLNG": "firstStation.lng",
+      "ALL": "0",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 883,
+    "function": "searchLineByKey",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "114",
+    "params": {
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CMD": "\"114\"",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 1001,
+    "function": "searchStationByKey",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "110",
+    "params": {
+      "CMD": "\"110\"",
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 1119,
+    "function": "searchLineAnStation",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "102",
+    "params": {
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CMD": "\"102\"",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 1281,
+    "function": "searchAllLine",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "119",
+    "params": {
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CMD": "\"119\"",
+      "CITYKEY": "citykey",
+      "KEY": "key"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 1577,
+    "function": "searchAllLineLeShan",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "119",
+    "params": {
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CMD": "\"119\"",
+      "CITYKEY": "citykey",
+      "KEY": "\"\""
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 1739,
+    "function": "searchAllLineXiJiu",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "119",
+    "params": {
+      "CITYNAME": "\"习酒通勤\"",
+      "CMD": "\"119\"",
+      "CITYKEY": "\"xijiu101401\"",
+      "KEY": "\"\""
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 2525,
+    "function": "getLineDetailsNew",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "103",
+    "params": {
+      "CMD": "\"103\"",
+      "CITYNAME": "cityname",
+      "LINENAME": "linename",
+      "DIRECTION": "direction",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 3497,
+    "function": "getLineSpecialNotice",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "120",
+    "params": {
+      "CMD": "\"120\"",
+      "CITYNAME": "cityname",
+      "LINELIST": "lineliststr"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 3587,
+    "function": "getLineSpecialNotice",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "120",
+    "params": {
+      "CMD": "\"120\"",
+      "CITYNAME": "cityname",
+      "LINELIST": "lineliststr"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 3671,
+    "function": "getLineSpecialNoticeByLines",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "120",
+    "params": {
+      "CMD": "\"120\"",
+      "CITYNAME": "cityname",
+      "LINELIST": "lineliststr"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 3877,
+    "function": "getRealTime",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "104",
+    "params": {
+      "CMD": "\"104\"",
+      "CITYNAME": "cityname",
+      "LINENAME": "linename",
+      "DIRECTION": "direction",
+      "STATIONORDER": "selectStationId",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 5203,
+    "function": "getLineByStation",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "105",
+    "params": {
+      "CMD": "\"105\"",
+      "CITYNAME": "cityname",
+      "STATIONNAME": "stationname",
+      "MYLAT": "''",
+      "MYLNG": "''",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 5317,
+    "function": "getLineByStationV2",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "115",
+    "params": {
+      "CMD": "\"115\"",
+      "CITYNAME": "cityname",
+      "STATIONNAME": "stationname",
+      "MYLAT": "lat",
+      "MYLNG": "lng",
+      "ALL": "1",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 5471,
+    "function": "searchStation",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "209",
+    "params": {
+      "CMD": "\"209\"",
+      "CITYNAME": "cityname",
+      "STATIONNAME": "stationname",
+      "MYLAT": "lat",
+      "MYLNG": "lng",
+      "LAT": "lat",
+      "LNG": "lng",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 5747,
+    "function": "searchTransferPoint",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "110",
+    "params": {
+      "CMD": "\"110\"",
+      "CITYNAME": "cityname",
+      "KEYWORD": "keyword",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 6565,
+    "function": "searchTransferReal",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "112",
+    "params": {
+      "CMD": "\"112\"",
+      "CITYNAME": "cityname",
+      "REALLINE": "realLine",
+      "REALDIR": "realDir",
+      "STATIONORDER": "stationOrder",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 6701,
+    "function": "searchTransferReal2",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "112",
+    "params": {
+      "CMD": "\"112\"",
+      "CITYNAME": "cityname",
+      "REALLINE": "realLine",
+      "REALDIR": "realDir",
+      "STATIONORDER": "stationOrder",
+      "STATIONNAME": "stationName",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 7913,
+    "function": "searchTransferDetailReal2",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "113",
+    "params": {
+      "CMD": "\"113\"",
+      "CITYNAME": "cityname",
+      "REALLINE": "realLine",
+      "REALDIR": "realDir",
+      "STATIONORDER": "stationOrder",
+      "STATIONNAME": "stationName",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 8113,
+    "function": "searchTransferDetailReal",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "113",
+    "params": {
+      "CMD": "\"113\"",
+      "CITYNAME": "cityname",
+      "REALLINE": "realLine",
+      "REALDIR": "realDir",
+      "STATIONORDER": "stationOrder",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 8815,
+    "function": "getCityList",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "101",
+    "params": {
+      "CMD": "\"101\""
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 9123,
+    "function": "getNews",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "203",
+    "params": {
+      "CMD": "\"203\"",
+      "CITYNAME": "cityname",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 9209,
+    "function": "getNewsList",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "203",
+    "params": {
+      "CMD": "\"203\"",
+      "CITYNAME": "cityname",
+      "CITYKEY": "citykey"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 9355,
+    "function": "cityInfo",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "204",
+    "params": {
+      "CMD": "\"204\"",
+      "CITYNAME": "cityname"
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 9895,
+    "function": "getDepart",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "116",
+    "params": {
+      "CMD": "\"116\"",
+      "CITYNAME": "cityname",
+      "DIRECTION": "upperOrDown",
+      "ROUTEID": "routeId",
+      "CITYKEY": "\"\""
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 10079,
+    "function": "getDepartV2",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "207",
+    "params": {
+      "CMD": "\"207\"",
+      "CITYNAME": "cityName",
+      "DIRECTION": "uod",
+      "ROUTEID": "routeId",
+      "CITYKEY": "\"\""
+    }
+  },
+  {
+    "source": "output\\scripts\\remote-mybus.js",
+    "line": 10387,
+    "function": "searchBusLineByStationQRCodeNew",
+    "method": "POST",
+    "dataType": "json",
+    "url": "apiroot",
+    "cmd": "117",
+    "params": {
+      "CITYCODE": "citycode",
+      "STATIONID": "stationid",
+      "CMD": "\"117\""
+    }
+  }
+]

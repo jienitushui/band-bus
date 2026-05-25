@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "python .cursor/hooks/update_status.py start"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "python .cursor/hooks/update_status.py start"
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "python .cursor/hooks/update_status.py pending"
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "python .cursor/hooks/update_status.py pending"
+      }
+    ],
+    "stop": [
+      {
+        "command": "python .cursor/hooks/update_status.py end"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "python .cursor/hooks/update_status.py idle"
+      }
+    ]
+  }
+}

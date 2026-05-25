@@ -1,0 +1,89 @@
+# --- 操作系统 ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE ---
+.idea/
+.vscode/
+.codex/
+*.iml
+*.swp
+*.swo
+*~
+
+# --- Gradle / Android ---
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+*.dex
+captures/
+.externalNativeBuild/
+.cxx/
+/.tmp-interconnect-sdk/
+
+/android/.gradle/
+/android/local.properties
+
+# --- 快应用 uno.keyin.bus ---
+/uno.keyin.bus/node_modules/
+/uno.keyin.bus/dist/
+/uno.keyin.bus/sign/**/*.pem
+/uno.keyin.bus/sign/**/*.p12
+/uno.keyin.bus/sign/**/*.jks
+/uno.keyin.bus/quickapp.config.js
+/uno.keyin.bus/output.py
+/uno.keyin.bus/output.txt
+
+# --- Node.js ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+.venv/
+env/
+ENV/
+.scraper_env/
+
+# --- cursor-status-monitor ---
+/cursor-status-monitor/build/
+/cursor-status-monitor/dist/
+/cursor-status-monitor/*.spec
+
+# --- 签名与密钥（勿提交仓库）---
+**/*.jks
+**/*.p12
+**/*.keystore
+**/keystore.pem
+**/sign/**/private.pem
+**/sign/**/certificate.pem
+!/uno.keyin.bus/sign/**/.gitkeep
+
+# --- 本地压缩包与超大参考文档（已有解压目录或源码副本）---
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+/xiaomi-vela-docs/
+
+# --- 环境与日志 ---
+.env
+.env.*
+!.env.example
+*.log

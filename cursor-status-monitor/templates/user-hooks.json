@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "\"{{PYTHON_EXE}}\" \"{{HOOKS_DIR}}\\update_status.py\" start"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "\"{{PYTHON_EXE}}\" \"{{HOOKS_DIR}}\\update_status.py\" start"
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "\"{{PYTHON_EXE}}\" \"{{HOOKS_DIR}}\\update_status.py\" pending"
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "\"{{PYTHON_EXE}}\" \"{{HOOKS_DIR}}\\update_status.py\" pending"
+      }
+    ],
+    "stop": [
+      {
+        "command": "\"{{PYTHON_EXE}}\" \"{{HOOKS_DIR}}\\update_status.py\" end"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "\"{{PYTHON_EXE}}\" \"{{HOOKS_DIR}}\\update_status.py\" idle"
+      }
+    ]
+  }
+}

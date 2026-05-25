@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Android 10+：锁屏/应用不在前台时中继仍可读取位置需在 manifest 声明，且须单独向用户申请「始终允许」 -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@android:drawable/ic_menu_mylocation"
+        android:label="@string/app_name"
+        android:roundIcon="@android:drawable/ic_menu_mylocation"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.BandBus">
+        <!-- 默认仍出现在最近任务；「隐藏最近任务卡片」由 MainActivity 内开关运行时调用 AppTask.setExcludeFromRecents -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:excludeFromRecents="false"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/title_settings" />
+
+        <service
+            android:name=".LocationRelayService"
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
+
+        <receiver
+            android:name=".BootRelayReceiver"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

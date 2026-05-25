@@ -1,0 +1,492 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".SettingsActivity">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/settingsToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimary"
+            app:navigationIconTint="@color/white"
+            app:navigationIcon="@drawable/ic_arrow_back_24"
+            app:title="@string/title_settings"
+            app:titleTextColor="@color/white" />
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/settingsScroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:id="@+id/title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_relay_section_title"
+                android:textAppearance="?attr/textAppearanceHeadline6" />
+
+            <TextView
+                android:id="@+id/sdkStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textAppearance="?attr/textAppearanceBody1"
+                tools:text="SDK" />
+
+            <TextView
+                android:id="@+id/interconnectSelfCheck"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:padding="10dp"
+                android:textAppearance="?attr/textAppearanceBody2"
+                tools:text="互联自检" />
+
+            <TextView
+                android:id="@+id/hintInterconnectVsSdk"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/hint_interconnect_vs_sdk"
+                android:textAppearance="?attr/textAppearanceBody2"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/exclude_from_recents_title"
+                        android:textAppearance="?attr/textAppearanceBody1" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/exclude_from_recents_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchExcludeFromRecents"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="@string/exclude_from_recents_title" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/section_background_keepalive"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <TextView
+                android:id="@+id/batteryOptStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                tools:text="电池优化状态" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnBatteryOptimization"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/action_request_battery_whitelist" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMiuiAutostart"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/action_open_miui_autostart" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/section_notif_watchdog"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/notif_watchdog_switch_title"
+                        android:textAppearance="?attr/textAppearanceBody1" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/notif_watchdog_switch_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchNotifWatchdog"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="@string/notif_watchdog_switch_title" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/notif_watchdog_interval_label"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <Spinner
+                android:id="@+id/spinnerNotifWatchdogInterval"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:minHeight="48dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/section_relay_heartbeat"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/relay_heartbeat_switch_title"
+                        android:textAppearance="?attr/textAppearanceBody1" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/relay_heartbeat_switch_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchRelayHeartbeat"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="@string/relay_heartbeat_switch_title" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/relay_heartbeat_interval_label"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <Spinner
+                android:id="@+id/spinnerRelayHeartbeatInterval"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:minHeight="48dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/hint_keepalive_short"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/section_watch_gps_defer"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/watch_gps_defer_label"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <Spinner
+                android:id="@+id/spinnerWatchGpsDeferFailures"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:minHeight="48dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/watch_gps_defer_hint"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/section_vibe_coding"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/vibe_status_api_label"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:hint="@string/vibe_status_api_label">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputVibeStatusApiUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textUri"
+                    android:maxLines="2" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/vibe_status_api_hint"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/watch_default_home_vibe_title"
+                        android:textAppearance="?attr/textAppearanceBody1" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/watch_default_home_vibe_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchWatchDefaultHomeVibe"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="@string/watch_default_home_vibe_title" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/watch_debug_ui_switch_title"
+                        android:textAppearance="?attr/textAppearanceBody1" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/watch_debug_ui_switch_hint"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchWatchDebugUi"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="@string/watch_debug_ui_switch_title" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/nodeStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                tools:text="节点" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRefreshNodes"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/action_refresh_devices" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRequestPermission"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/action_request_wear_permission" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRegisterListener"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/action_register_message_listener" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRequestLocationPermission"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/action_request_location_permission" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSendLocation"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/action_send_location_to_watch" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/inputLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:hint="@string/hint_message_to_watch">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textCapSentences|textMultiLine"
+                    android:minLines="2" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSend"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/action_send_to_watch" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/label_log"
+                android:textAppearance="?attr/textAppearanceSubtitle1" />
+
+            <TextView
+                android:id="@+id/logView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@color/log_panel_background"
+                android:fontFamily="monospace"
+                android:padding="10dp"
+                android:textIsSelectable="true"
+                android:textSize="12sp"
+                tools:text="log" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

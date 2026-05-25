@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能手表公交UI复刻</title>
+  <!-- 引入 Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    /* =========================================
+       CSS Resets & Variables
+       ========================================= */
+    :root {
+      --bg-main: #111827;
+      --text-main: #ffffff;
+      --color-orange-500: #f97316;
+      --color-orange-400: #fb923c;
+      --color-emerald-400: #34d399;
+      --color-blue-400: #60a5fa;
+      --color-gray-300: #d1d5db;
+      --color-gray-400: #9ca3af;
+      --color-gray-500: #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      outline: none;
+      padding: 0;
+      color: inherit;
+    }
+
+    /* 隐藏滚动条 (跨浏览器支持) */
+    ::-webkit-scrollbar { display: none; }
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* =========================================
+       Watch Hardware Styling
+       ========================================= */
+    .watch-case {
+      position: relative;
+      background: linear-gradient(to bottom right, #e5e5e4, #b3b3b1);
+      padding: 6px;
+      border-radius: 56px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      border: 1px solid #f5f5f5;
+    }
+
+    .watch-crown {
+      position: absolute;
+      right: -12px;
+      top: 28%;
+      width: 12px;
+      height: 45px;
+      background: linear-gradient(to right, #b0b0af, #8a8a88);
+      border-radius: 0 6px 6px 0;
+      border-top: 1px solid #666;
+      border-bottom: 1px solid #666;
+      border-right: 1px solid #666;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      padding: 6px 0;
+      z-index: 0;
+    }
+
+    .crown-line {
+      height: 1px;
+      width: 100%;
+      background: #666;
+      opacity: 0.5;
+    }
+
+    .watch-button {
+      position: absolute;
+      left: -4px;
+      top: 32%;
+      width: 4px;
+      height: 40px;
+      background: var(--color-orange-500);
+      border-radius: 4px 0 0 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      z-index: 0;
+    }
+
+    .watch-bezel {
+      background: #000;
+      padding: 10px;
+      border-radius: 50px;
+      position: relative;
+      z-index: 10;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    .watch-screen {
+      width: 190px;
+      height: 240px;
+      background: #16212b;
+      border-radius: 40px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      color: var(--text-main);
+      overflow: hidden;
+    }
+
+    .screen-bg {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, #1f3040, #121921);
+      pointer-events: none;
+    }
+
+    /* =========================================
+       Global Screen Components
+       ========================================= */
+    .nav-dots {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 20;
+      transition: opacity 0.3s;
+    }
+    .nav-dots.is-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .nav-dot {
+      width: 3.5px;
+      height: 3.5px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 9999px;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+    .nav-dot.is-active {
+      height: 10px;
+      background: #fff;
+    }
+
+    .screen-content {
+      position: relative;
+      z-index: 10;
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* =========================================
+       Home View
+       ========================================= */
+    .home-view {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 8px;
+    }
+
+    .header-area {
+      flex-shrink: 0;
+      padding: 16px 12px 4px 12px;
+    }
+
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .btn-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.1s;
+    }
+    .btn-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+    .btn-location {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--color-orange-400);
+    }
+    .btn-refresh {
+      background: var(--color-orange-500);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.3);
+    }
+    .btn-refresh:hover { background: var(--color-orange-400); }
+    .btn-refresh:active { transform: scale(0.9); }
+    .btn-back {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--color-gray-300);
+    }
+    .btn-back:hover { color: #fff; background: rgba(255, 255, 255, 0.2); }
+    .btn-back:active { transform: scale(0.95); }
+    .btn-back svg { width: 16px; height: 16px; margin-right: 2px; }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .is-spinning {
+      animation: spin 1s linear infinite;
+    }
+
+    .title-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 2px;
+    }
+    .time-text {
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      line-height: 1;
+    }
+    .station-pill {
+      font-size: 9px;
+      color: var(--color-orange-400);
+      font-weight: 500;
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2px 6px;
+      border-radius: 9999px;
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      transition: all 0.1s;
+    }
+    .station-pill:hover { background: rgba(255, 255, 255, 0.1); }
+    .station-pill:active { transform: scale(0.95); }
+    .station-pill svg.bus-icon { width: 10px; height: 10px; }
+    .station-pill svg.arrow-icon { width: 8px; height: 8px; opacity: 0.7; }
+
+    .progress-area {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      margin-top: 12px;
+      margin-bottom: 8px;
+      padding: 0 4px;
+    }
+    .progress-track {
+      width: 150px;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+      position: relative;
+      padding: 3px;
+      display: flex;
+      align-items: center;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--color-emerald-400);
+      border-radius: 9999px;
+      transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .progress-knob {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      background: var(--color-orange-500);
+      border-radius: 50%;
+      border: 2.5px solid #1f3040;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: left 1s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 10;
+    }
+    .progress-knob svg {
+      width: 12px;
+      height: 12px;
+      color: #fff;
+      margin-top: 1px;
+    }
+
+    /* Bus Card List */
+    .bus-list-container {
+      flex: 1;
+      width: 100%;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 12px;
+    }
+    .bus-card-wrapper {
+      width: 100%;
+      height: 100%;
+      flex-shrink: 0;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      padding: 0 12px 12px 12px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    .bus-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      border-radius: 24px;
+      padding: 14px;
+      width: 100%;
+      position: relative;
+      transition: all 0.3s;
+    }
+    /* Card Stacking States */
+    .bus-card.is-current {
+      transform: scale(1) translateY(0);
+      opacity: 1;
+      z-index: 10;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .bus-card.is-prev {
+      transform: scale(0.9) translateY(24px); /* Pushed down/behind */
+      opacity: 0.4;
+      z-index: 0;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .bus-card.is-next {
+      transform: scale(0.9) translateY(-24px); /* Pushed up/behind */
+      opacity: 0.4;
+      z-index: 0;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .card-header {
+      font-size: 14px;
+      font-weight: bold;
+      color: #fff;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .route-suffix { font-size: 11px; font-weight: normal; color: var(--color-gray-400); }
+    .fastest-tag {
+      font-size: 9px;
+      background: rgba(52, 211, 153, 0.2);
+      color: var(--color-emerald-400);
+      padding: 2px 6px;
+      border-radius: 2px;
+      font-weight: normal;
+    }
+
+    .card-body {
+      display: flex;
+      align-items: center;
+    }
+    .bus-icon-large {
+      width: 32px;
+      height: 32px;
+      margin-right: 10px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.3s, opacity 0.3s;
+    }
+    .bus-icon-large svg { width: 100%; height: 100%; }
+    .bus-icon-large.active { opacity: 1; color: var(--color-emerald-400); }
+    .bus-icon-large.inactive { opacity: 0.6; color: #fff; }
+
+    .info-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .info-row { display: flex; align-items: flex-start; gap: 6px; }
+    
+    .v-line {
+      width: 3px;
+      height: 12px;
+      border-radius: 9999px;
+      margin-top: 2px;
+      transition: background-color 0.3s;
+    }
+    .v-line.blue { background: var(--color-blue-400); }
+    .v-line.green { background: var(--color-emerald-400); }
+    .v-line.gray { background: var(--color-gray-500); }
+
+    .text-group { display: flex; flex-direction: column; line-height: 1; }
+    .dest-text { font-size: 11px; font-weight: 600; color: #fff; transition: opacity 0.3s; }
+    .dest-text.active { opacity: 1; }
+    .dest-text.inactive { opacity: 0.6; }
+    .sub-text { font-size: 9px; color: var(--color-gray-400); margin-top: 3px; }
+    
+    .eta-value { font-size: 13px; font-weight: bold; display: flex; align-items: baseline; gap: 2px; transition: color 0.3s; }
+    .eta-value.active { color: var(--color-emerald-400); }
+    .eta-value.inactive { color: var(--color-gray-300); }
+    .eta-unit { font-size: 9px; font-weight: normal; }
+    .eta-unit.active { color: rgba(52, 211, 153, 0.8); }
+    .eta-unit.inactive { color: var(--color-gray-500); }
+
+    /* =========================================
+       Station List View
+       ========================================= */
+    .station-view {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: #121921;
+      padding-bottom: 8px;
+    }
+    .station-nav {
+      flex-shrink: 0;
+      padding: 16px 12px 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(18, 25, 33, 0.8);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 40;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .station-title { font-size: 13px; font-weight: bold; color: #fff; letter-spacing: 0.025em; }
+    .nav-placeholder { width: 28px; }
+
+    .station-list-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px 24px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+      z-index: 30;
+    }
+    .station-item {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+      transition: all 0.1s;
+      display: flex;
+      flex-direction: column;
+    }
+    .station-item:active {
+      background: rgba(255, 255, 255, 0.1);
+      transform: scale(0.98);
+    }
+    .item-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .item-name { font-size: 13px; font-weight: bold; color: #fff; line-height: 1.2; }
+    .item-dist {
+      font-size: 10px;
+      color: var(--color-emerald-400);
+      font-weight: 500;
+      white-space: nowrap;
+      background: rgba(52, 211, 153, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .item-lines {
+      font-size: 10px;
+      color: var(--color-gray-400);
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .line-tag {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0 4px;
+      border-radius: 2px;
+    }
+
+    .station-scrollbar-track {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3.5px;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+      z-index: 40;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .station-scrollbar-thumb {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 9999px;
+      position: absolute;
+      left: 0;
+    }
+
+    /* 页面滑入滑出动效 */
+    .slide-enter-active, .slide-leave-active {
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .slide-enter-from, .slide-leave-to {
+      transform: translateX(100%);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <!-- 模拟手表硬件外壳 (钛金属质感) -->
+    <div class="watch-case">
+      
+      <!-- 手表右侧滚轮 (Crown) -->
+      <div class="watch-crown">
+        <div class="crown-line"></div>
+        <div class="crown-line"></div>
+        <div class="crown-line"></div>
+        <div class="crown-line"></div>
+      </div>
+      <!-- 手表左侧操作按钮 (橙色涂装) -->
+      <div class="watch-button"></div>
+
+      <!-- 手表黑色边框 (Bezel) -->
+      <div class="watch-bezel">
+        
+        <!-- 手表屏幕显示区域 -->
+        <div class="watch-screen">
+          
+          <!-- 背景渐变 (还原原图深蓝灰渐变) -->
+          <div class="screen-bg"></div>
+
+          <!-- 恢复首页右侧分页小白点 (联动指示器) -->
+          <div class="nav-dots" :class="{'is-hidden': showStationList}">
+            <div v-for="(_, idx) in busList" :key="'dot-'+idx"
+                 @click="scrollToIndex(idx)"
+                 class="nav-dot"
+                 :class="{'is-active': currentIndex === idx}">
+            </div>
+          </div>
+
+          <!-- 内容区：使用相对定位容器包裹多视图 -->
+          <div class="screen-content">
+            
+            <!-- 视图 1：主页 (保持在底层) -->
+            <div class="home-view">
+              <!-- 固定头部：导航与进度条 -->
+              <div class="header-area">
+                <!-- 顶部导航栏 -->
+                <div class="nav-bar">
+                  <!-- 左侧：定位按钮 -->
+                  <button class="btn-icon btn-location">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                    </svg>
+                  </button>
+                  
+                  <!-- 中间：时间和可点击的站台标题 -->
+                  <div class="title-center">
+                    <span class="time-text">{{ currentTime }}</span>
+                    <!-- 修改为可点击样式，带指示箭头 -->
+                    <span @click="openStationList" class="station-pill">
+                      <!-- 迷你公交小图标 -->
+                      <svg viewBox="0 0 24 24" fill="currentColor" class="bus-icon">
+                         <path d="M4 16c0 .88.39 1.67 1 2.22v1.28c0 .83.67 1.5 1.5 1.5S8 20.33 8 19.5V19h8v.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-1.28c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm-10-7V6h11v4H6.5z"/>
+                      </svg>
+                      {{ stationName }}
+                      <!-- 引导点击小箭头 -->
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="arrow-icon">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </span>
+                  </div>
+                  
+                  <!-- 右侧：刷新按钮 -->
+                  <button @click="refreshData" class="btn-icon btn-refresh">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :class="{'is-spinning': isRefreshing}">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- 中间：可视化进度条 -->
+                <div class="progress-area">
+                  <div class="progress-track">
+                    <!-- 进度条填充层 -->
+                    <div class="progress-fill" :style="{ width: progress + '%' }"></div>
+                    
+                    <!-- 进度指示器 (包含图标的圆圈) -->
+                    <div class="progress-knob" :style="{ left: 'calc(' + progress + '% - 11px)' }">
+                      <!-- 车头小图标 -->
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                         <path stroke-linecap="round" stroke-linejoin="round" d="M5 10h14M5 14h14M8 18h.01M16 18h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 可滑动卡片列表区 -->
+              <div ref="scrollContainer" @scroll="handleScroll" class="bus-list-container hide-scrollbar">
+                <div v-for="(bus, index) in busList" :key="bus.id" class="bus-card-wrapper">
+                  
+                  <!-- 底部：详细数据卡片 -->
+                  <div class="bus-card"
+                       :class="{'is-current': currentIndex === index, 'is-prev': index < currentIndex, 'is-next': index > currentIndex}">
+                    <!-- 标题行 -->
+                    <div class="card-header">
+                      <div>
+                        {{ bus.route }} <span class="route-suffix">路</span>
+                      </div>
+                      <span v-if="index === 0" class="fastest-tag">最快</span>
+                    </div>
+
+                    <!-- 数据行布局 -->
+                    <div class="card-body">
+                      <!-- 左侧：公交站大图标 -->
+                      <div class="bus-icon-large" :class="currentIndex === index ? 'active' : 'inactive'">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                        </svg>
+                      </div>
+
+                      <!-- 右侧：详细参数 -->
+                      <div class="info-stack">
+                        <!-- 行程信息 -->
+                        <div class="info-row">
+                          <div class="v-line blue"></div>
+                          <div class="text-group">
+                            <span class="dest-text" :class="currentIndex === index ? 'active' : 'inactive'">开往 {{ bus.dest }}</span>
+                            <span class="sub-text">剩余 {{ bus.stops }} 站</span>
+                          </div>
+                        </div>
+                        
+                        <!-- 时间信息 -->
+                        <div class="info-row">
+                          <div class="v-line" :class="currentIndex === index ? 'green' : 'gray'"></div>
+                          <div class="text-group">
+                            <span class="eta-value" :class="currentIndex === index ? 'active' : 'inactive'">
+                              {{ bus.eta }} <span class="eta-unit" :class="currentIndex === index ? 'active' : 'inactive'">分钟</span>
+                            </span>
+                            <span class="sub-text">{{ index === 0 ? '即将到站' : '等待中' }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 视图 2：附近站台列表 (覆盖在顶层) -->
+            <transition name="slide">
+              <div v-if="showStationList" class="station-view">
+                
+                <!-- 列表导航头 -->
+                <div class="station-nav">
+                  <!-- 返回按钮 -->
+                  <button @click="showStationList = false" class="btn-icon btn-back">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <span class="station-title">附近站台</span>
+                  <!-- 占位，保持标题居中 -->
+                  <div class="nav-placeholder"></div>
+                </div>
+
+                <!-- 站台列表 -->
+                <div ref="stationListContainer" @scroll="handleStationScroll" class="station-list-container hide-scrollbar">
+                  <div v-for="station in nearbyStations" :key="station.id"
+                       @click="selectStation(station)"
+                       class="station-item">
+                    <div class="item-header">
+                      <div class="item-name">
+                        {{ station.name }}
+                      </div>
+                      <div class="item-dist">
+                        {{ station.distance }}m
+                      </div>
+                    </div>
+                    <div class="item-lines">
+                      <span v-for="line in station.lines" :key="line" class="line-tag">{{ line }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 站台列表专用的右侧长条滑动指示器 -->
+                <div class="station-scrollbar-track">
+                  <div class="station-scrollbar-thumb"
+                       :style="{
+                         height: stationThumbHeight + '%',
+                         top: stationScrollProgress + '%'
+                       }">
+                  </div>
+                </div>
+
+              </div>
+            </transition>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted, onUnmounted } = Vue;
+
+    createApp({
+      setup() {
+        // --- 视图与全局状态 ---
+        const currentTime = ref('00:00');
+        const isRefreshing = ref(false);
+        const stationName = ref('高新科技园站');
+        const showStationList = ref(false); // 控制站台列表视图
+        
+        // --- 核心业务数据 ---
+        const busList = ref([
+          { id: 1, route: '86', dest: '大学城总站', eta: 3, stops: 2 },
+          { id: 2, route: 'M201', dest: '深圳湾口岸', eta: 12, stops: 7 },
+          { id: 3, route: 'B10', dest: '世界之窗', eta: 21, stops: 14 }
+        ]);
+
+        const nearbyStations = ref([
+          { id: 1, name: '高新科技园站', distance: 12, lines: ['86', 'M201', 'B10'] },
+          { id: 2, name: '深大北门', distance: 240, lines: ['B728', 'M398', '113'] },
+          { id: 3, name: '科苑北路口', distance: 450, lines: ['M109', '339', 'E39'] },
+          { id: 4, name: '清华信息港', distance: 680, lines: ['M123', 'M429'] }
+        ]);
+
+        // UI联动状态
+        const progress = ref(75); // 进度条百分比 0-100
+        const scrollContainer = ref(null);
+        const currentIndex = ref(0);
+
+        // 站台列表滚动状态
+        const stationListContainer = ref(null);
+        const stationThumbHeight = ref(40);
+        const stationScrollProgress = ref(0);
+
+        // --- 导航逻辑 ---
+        const openStationList = () => {
+          showStationList.value = true;
+          // 延迟等待DOM渲染后初始化滚动条大小
+          setTimeout(() => {
+            if (stationListContainer.value) {
+              handleStationScroll({ target: stationListContainer.value });
+            }
+          }, 50);
+        };
+
+        const selectStation = (station) => {
+          stationName.value = station.name;
+          showStationList.value = false;
+          // 切换站台后自动刷新公交数据
+          refreshData();
+        };
+
+        // --- 进度条计算逻辑 ---
+        const updateProgress = (bus) => {
+          if (!bus) return;
+          // 假设 20 分钟为初始最远距离 (0%)
+          let newProgress = 100 - (bus.eta * (100 / 20));
+          if(newProgress < 10) newProgress = 10;
+          if(newProgress > 100) newProgress = 100;
+          progress.value = newProgress;
+        };
+
+        // --- 监听站台列表滑动事件 ---
+        const handleStationScroll = (e) => {
+          const target = e.target;
+          const scrollHeight = target.scrollHeight;
+          const clientHeight = target.clientHeight;
+          const scrollTop = target.scrollTop;
+          
+          if (scrollHeight > clientHeight) {
+            // 计算滑块占用百分比 (最小高度 20%)
+            stationThumbHeight.value = Math.max((clientHeight / scrollHeight) * 100, 20);
+            
+            // 计算滚动进度 (0 到 100 - thumbHeight)
+            const maxScrollTop = scrollHeight - clientHeight;
+            stationScrollProgress.value = (scrollTop / maxScrollTop) * (100 - stationThumbHeight.value);
+          } else {
+            stationThumbHeight.value = 100;
+            stationScrollProgress.value = 0;
+          }
+        };
+
+        // --- 监听主卡片滑动事件 ---
+        const handleScroll = (e) => {
+          const target = e.target;
+          const index = Math.round(target.scrollTop / target.clientHeight);
+          if (currentIndex.value !== index && index >= 0 && index < busList.value.length) {
+            currentIndex.value = index;
+            updateProgress(busList.value[index]);
+          }
+        };
+
+        const scrollToIndex = (index) => {
+          if (scrollContainer.value) {
+            scrollContainer.value.scrollTo({
+              top: index * scrollContainer.value.clientHeight,
+              behavior: 'smooth'
+            });
+          }
+        };
+
+        // --- 时钟逻辑 ---
+        const updateTime = () => {
+          const now = new Date();
+          currentTime.value = now.toLocaleTimeString('en-US', { 
+            hour12: false, 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          });
+        };
+
+        // --- 刷新交互逻辑 (模拟API查询) ---
+        const refreshData = () => {
+          if (isRefreshing.value) return;
+          
+          isRefreshing.value = true;
+          progress.value = 5; 
+
+          setTimeout(() => {
+            busList.value = busList.value.map(bus => {
+              const newEta = Math.floor(Math.random() * 20) + 1; 
+              return {
+                ...bus,
+                eta: newEta,
+                stops: Math.ceil(newEta / 1.5) 
+              }
+            }).sort((a, b) => a.eta - b.eta);
+            
+            scrollToIndex(0);
+            currentIndex.value = 0;
+            updateProgress(busList.value[0]);
+
+            isRefreshing.value = false;
+          }, 800);
+        };
+
+        // --- 生命周期 ---
+        let timer;
+        onMounted(() => {
+          updateTime();
+          timer = setInterval(updateTime, 1000);
+          setTimeout(() => {
+             updateProgress(busList.value[0]);
+          }, 100);
+        });
+
+        onUnmounted(() => {
+          clearInterval(timer);
+        });
+
+        return {
+          currentTime,
+          isRefreshing,
+          stationName,
+          showStationList,
+          nearbyStations,
+          busList,
+          progress,
+          scrollContainer,
+          currentIndex,
+          stationListContainer,
+          stationThumbHeight,
+          stationScrollProgress,
+          openStationList,
+          selectStation,
+          handleScroll,
+          handleStationScroll,
+          scrollToIndex,
+          refreshData
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

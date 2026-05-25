@@ -1,0 +1,14 @@
+/build
+/node_modules
+/dist
+# 签名材料勿提交仓库；目录结构见 sign/README.txt
+/sign/**/*.pem
+/sign/**/*.p12
+/sign/**/*.jks
+.eslintignore
+.npmignore
+package-lock.json
+quickapp.config.js
+.DS_Store
+output.py
+output.txt

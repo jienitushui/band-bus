@@ -1,0 +1,661 @@
+<template>
+  <div class="page" style="height: {{pageHeight}}px;">
+    <div class="detail-nav">
+      <div class="round-btn back-btn" @click="back">
+        <image static src="/common/images/icon_back1.png" class="back-icon" />
+      </div>
+      <div class="detail-title-wrap">
+        <text class="route-title" style="lines:1;">{{routeTitle}}</text>
+        <div class="route-sub-hit" @click="onRouteSubClick">
+          <text class="route-sub {{firstLastText ? 'route-sub-link' : ''}}" style="lines:1;">{{firstLastText}}</text>
+        </div>
+      </div>
+      <div class="round-btn direction-btn" @click="switchDirection">
+        <text static class="direction-btn-text">换向</text>
+      </div>
+    </div>
+
+    <list if="{{!loading && stationList.length > 0}}" class="stations-list" bounces="false" style="height: {{stationListHeight}}px;">
+      <list-item for="{{stationList}}" class="station-item" type="station">
+        <div class="station-card {{getIsCurrentDot($item) ? 'station-card-current' : ''}}">
+          <text class="station-order">{{getStationOrderText($item)}}</text>
+          <div class="station-main">
+            <text class="station-name" style="lines:1;">{{$item.stationName || ''}}</text>
+            <text class="station-sub" style="lines:1;">{{getStationSub($item)}}</text>
+          </div>
+          <div if="{{hasBusAtStation($item)}}" class="bus-marker" @click="openVehicleDetail($item)">
+            <image static src="/common/images/icon_bus.png" class="bus-marker-icon" />
+          </div>
+        </div>
+      </list-item>
+    </list>
+
+    <div if="{{!loading && stationList.length === 0}}" class="state-layer">
+      <image static src="/common/images/empty.png" class="empty-icon" />
+      <text static class="state-text">暂无站点</text>
+    </div>
+
+    <div if="{{loading}}" class="state-layer">
+      <text static class="state-text">加载中…</text>
+    </div>
+
+    <div class="edge-back-zone" style="height: {{stationListHeight}}px;" @swipe="onEdgeBackSwipe"></div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import fetch from '@system.fetch'
+import device from '@system.device'
+
+const DESIGN_WIDTH = 336;
+const DEFAULT_PAGE_HEIGHT = 336;
+const DETAIL_LIST_TOP = 94;
+const CITYNAME = '泉州市';
+const CITYKEY = 'qz595803';
+const API_URL = 'https://h5.mygolbs.com/ApiData.do';
+
+export default {
+  protected: {
+    linename: '',
+    direction: '1',
+    stationorder: '0'
+  },
+  private: {
+    loading: false,
+    routeTitle: '',
+    firstLastText: '',
+    stationList: [],
+    realtimeList: [],
+    realtimeText: '',
+    routeId: '',
+    pageHeight: DEFAULT_PAGE_HEIGHT,
+    stationListHeight: DEFAULT_PAGE_HEIGHT - DETAIL_LIST_TOP,
+    scheduleBeginTime: '',
+    scheduleEndTime: '',
+    schedulePlan103: '',
+    scheduleRealtimeEta: '',
+    schedulePlan104: ''
+  },
+  onInit() {
+    this.direction = String(this.direction != null ? this.direction : '1');
+    this.stationorder = String(this.stationorder != null ? this.stationorder : '0');
+    this.initLayout();
+    this.loadDetail();
+  },
+  onDestroy() {
+    this.stationList = null;
+    this.realtimeList = null;
+  },
+  back() {
+    router.back();
+  },
+  onEdgeBackSwipe(e) {
+    if (e && e.direction === 'right') {
+      this.back();
+    }
+  },
+  switchDirection() {
+    if (this.loading) return;
+
+    this.direction = String(this.direction) === '1' ? '2' : '1';
+    this.stationorder = '0';
+    this.loadDetail();
+  },
+
+  buildScheduleSections() {
+    const out = [];
+    const b = String(this.scheduleBeginTime || '').trim();
+    const e = String(this.scheduleEndTime || '').trim();
+    if (b || e) {
+      const lines = [];
+      if (b) lines.push(`首班：${b}`);
+      if (e) lines.push(`末班：${e}`);
+      out.push({ title: '首末班', body: lines.join('\n') });
+    }
+    const p103 = String(this.schedulePlan103 || '').trim();
+    if (p103) {
+      out.push({ title: '线路计划发车', body: p103 });
+    }
+    const eta = String(this.scheduleRealtimeEta || '').trim();
+    if (eta) {
+      out.push({ title: '到站预报', body: eta });
+    }
+    const p104 = String(this.schedulePlan104 || '').trim();
+    if (p104 && p104 !== p103) {
+      out.push({ title: '下一班发车', body: `预计 ${p104} 发车` });
+    }
+    return out;
+  },
+
+  onRouteSubClick() {
+    if (!this.firstLastText) {
+      return;
+    }
+    this.openScheduleDetail();
+  },
+
+  openScheduleDetail() {
+    let sections = this.buildScheduleSections();
+    if (!sections.length && this.firstLastText) {
+      sections = [{ title: '说明', body: String(this.firstLastText) }];
+    }
+    if (!sections.length) {
+      prompt.showToast({ message: '暂无运营时刻信息', duration: 1500 });
+      return;
+    }
+    let payload = '';
+    try {
+      payload = encodeURIComponent(JSON.stringify({ sections }));
+    } catch (err) {
+      prompt.showToast({ message: '无法打开详情', duration: 1500 });
+      return;
+    }
+    router.push({
+      uri: '/pages/routeScheduleDetail',
+      params: {
+        routeTitle: this.routeTitle,
+        payload
+      }
+    });
+  },
+  getIsCurrentDot(item) {
+    if (!item) return false;
+    return String(item.stationOrder) === String(this.stationorder);
+  },
+  getStationSub(item) {
+    if (!item) return '';
+    const cur = parseInt(this.stationorder || '0', 10);
+    const order = parseInt(item.stationOrder || '0', 10);
+    if (order === cur) return '当前站点';
+    if (order < cur) return '已过站';
+    return '未到站';
+  },
+
+  getStationOrderText(item) {
+    const order = item && item.stationOrder != null ? item.stationOrder : '';
+    return order ? String(order) : '';
+  },
+
+  hasBusAtStation(item) {
+    return !!this.getBusAtStation(item);
+  },
+
+  openVehicleDetail(item) {
+    const bus = this.getBusAtStation(item);
+    if (!bus) return;
+
+    router.push({
+      uri: '/pages/vehicleDetail',
+      params: {
+        linename: this.linename,
+        direction: this.direction,
+        stationorder: item && item.stationOrder != null ? String(item.stationOrder) : '',
+        stationname: item && item.stationName ? item.stationName : '',
+        routeTitle: this.routeTitle,
+        busNumber: bus.busNumber || '',
+        stopOrder: bus.stopOrder == null ? '' : String(bus.stopOrder),
+        nextStationName: bus.nextStationName || '',
+        nextDistanceText: bus.nextDistanceText || '',
+        nextEtaText: bus.nextEtaText || '',
+        busInfo: this.encodeBusInfo(bus)
+      }
+    });
+  },
+
+  encodeBusInfo(bus) {
+    try {
+      return encodeURIComponent(JSON.stringify(bus || {}));
+    } catch (e) {
+      return '';
+    }
+  },
+
+  getBusAtStation(item) {
+    if (!item || !Array.isArray(this.realtimeList)) return null;
+    const order = Number(item.stationOrder);
+    for (let i = 0; i < this.realtimeList.length; i++) {
+      const bus = this.realtimeList[i];
+      if (Number(bus.stopOrder) === order) return bus;
+    }
+    return null;
+  },
+
+  normalizeStationName(name) {
+    return String(name || '')
+      .replace(/[（）()]/g, '')
+      .replace(/\s+/g, '')
+      .trim();
+  },
+
+  initLayout() {
+    if (!device || typeof device.getInfo !== 'function') {
+      this.applyLayout(DEFAULT_PAGE_HEIGHT);
+      return;
+    }
+
+    device.getInfo({
+      success: (info) => {
+        const width = Number(info && info.screenWidth) || DESIGN_WIDTH;
+        const height = Number(info && info.screenHeight) || DEFAULT_PAGE_HEIGHT;
+        const scaledHeight = Math.floor(height * DESIGN_WIDTH / width);
+        this.applyLayout(scaledHeight);
+      },
+      fail: () => {
+        this.applyLayout(DEFAULT_PAGE_HEIGHT);
+      }
+    });
+  },
+
+  applyLayout(height) {
+    const safeHeight = Math.max(Math.min(Number(height) || DEFAULT_PAGE_HEIGHT, 520), 300);
+    this.pageHeight = safeHeight;
+    this.stationListHeight = Math.max(safeHeight - DETAIL_LIST_TOP, 200);
+  },
+
+  normalizeLineName(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return '';
+    if (raw.indexOf('路') >= 0) return raw;
+    return `${raw}路`;
+  },
+
+  async loadDetail() {
+    if (this.loading) return;
+    this.loading = true;
+
+    /* CMD 103：静态基础数据（站序、首末班、计划等，按 DIRECTION）；CMD 104：本站动态实时（车辆、ETA，需 STATIONORDER，可高频轮询）。 */
+
+    this.stationList = [];
+    this.realtimeList = [];
+    this.realtimeText = '';
+    this.scheduleBeginTime = '';
+    this.scheduleEndTime = '';
+    this.schedulePlan103 = '';
+    this.scheduleRealtimeEta = '';
+    this.schedulePlan104 = '';
+    const lineName = this.normalizeLineName(this.linename);
+    this.routeTitle = lineName || '线路';
+    this.firstLastText = '';
+
+    try {
+      const body =
+        `CMD=103&CITYNAME=${encodeURIComponent(CITYNAME)}&LINENAME=${encodeURIComponent(lineName)}&DIRECTION=${this.direction}&CITYKEY=${CITYKEY}`;
+
+      const apiResp = await this.apiPost(body);
+
+      const detail = apiResp || {};
+      const stations = Array.isArray(detail.data) ? detail.data : [];
+
+      this.routeId = detail.routeId || '';
+
+      this.routeTitle = (detail.routeName || lineName || '').trim() || '线路';
+
+      const beginTime = detail.beginTime || '';
+      const endTime = detail.endTime || '';
+      this.scheduleBeginTime = beginTime;
+      this.scheduleEndTime = endTime;
+      this.schedulePlan103 = detail.planTime ? String(detail.planTime) : '';
+      this.firstLastText = beginTime || endTime
+        ? `首末班：${beginTime || ''} - ${endTime || ''}`
+        : (this.schedulePlan103 ? `计划发车：${this.schedulePlan103}` : '');
+
+      this.stationList = stations;
+      await this.loadRealtime(lineName);
+    } catch (e) {
+      prompt.showToast({ message: '详情加载失败', duration: 2000 });
+      this.stationList = [];
+    } finally {
+      this.loading = false;
+    }
+  },
+
+  async loadRealtime(lineName) {
+    if (!lineName) return;
+
+    try {
+      const body =
+        `CMD=104&CITYNAME=${encodeURIComponent(CITYNAME)}&LINENAME=${encodeURIComponent(lineName)}&DIRECTION=${this.direction}&CITYKEY=${CITYKEY}&STATIONORDER=${this.stationorder}`;
+
+      const realtime = await this.apiPost(body);
+      const buses = Array.isArray(realtime && realtime.list) ? realtime.list : [];
+      const eta = realtime && Array.isArray(realtime.routeOnStationRTimeInfoList)
+        ? realtime.routeOnStationRTimeInfoList[0]
+        : null;
+
+      const plan104Raw = realtime && realtime.planTime != null ? String(realtime.planTime).trim() : '';
+      this.schedulePlan104 = plan104Raw;
+
+      this.realtimeList = buses.map((bus, index) => {
+        const stopOrder = this.resolveBusStopOrder(bus);
+        return Object.assign({}, bus, {
+          stopOrder,
+          nextStationName: this.resolveNextStationName(bus, stopOrder),
+          nextDistanceText: this.resolveNextDistanceText(bus),
+          nextEtaText: this.resolveNextEtaText(bus),
+          id: bus.busNumber || `bus-${index}`
+        });
+      }).filter((bus) => bus.stopOrder > 0);
+
+      if (eta) {
+        const time = eta.busToStationTimeTips || (eta.busToStationTime ? `${eta.busToStationTime}分钟` : '');
+        const tips = eta.busToStationTips || '';
+        this.realtimeText = time || tips ? `${tips} ${time}`.trim() : '';
+        this.scheduleRealtimeEta = this.realtimeText || '';
+        if (this.realtimeText) {
+          this.firstLastText = this.realtimeText;
+        }
+      } else {
+        this.scheduleRealtimeEta = '';
+        if (!this.realtimeList.length && plan104Raw) {
+          this.firstLastText = `预计 ${plan104Raw} 发车`;
+        }
+      }
+    } catch (e) {
+      this.realtimeList = [];
+    }
+  },
+
+  resolveBusStopOrder(bus) {
+    if (!bus) return 0;
+    const rawIndex = Number(bus.index);
+    if (!isNaN(rawIndex) && rawIndex >= 0) {
+      const maxOrder = Array.isArray(this.stationList) ? this.stationList.length : rawIndex + 1;
+      const targetOrder = rawIndex + 1;
+      const arrivedOrder = this.isBusArrived(bus) ? targetOrder : targetOrder - 1;
+      if (arrivedOrder < 1) return 0;
+      return Math.min(arrivedOrder, maxOrder);
+    }
+
+    const name = this.normalizeStationName(bus.stationName);
+    if (!name || !Array.isArray(this.stationList)) return 0;
+    for (let i = 0; i < this.stationList.length; i++) {
+      if (this.normalizeStationName(this.stationList[i].stationName) === name) {
+        return Number(this.stationList[i].stationOrder) || i + 1;
+      }
+    }
+    return 0;
+  },
+
+  isBusArrived(bus) {
+    return String(bus && bus.statusType) === '0';
+  },
+
+  resolveNextStationName(bus, stopOrder) {
+    if (!bus) return '';
+    if (!this.isBusArrived(bus) && bus.stationName) return bus.stationName;
+
+    const nextOrder = Number(stopOrder) + 1;
+    if (Array.isArray(this.stationList)) {
+      for (let i = 0; i < this.stationList.length; i++) {
+        const station = this.stationList[i];
+        if (Number(station.stationOrder) === nextOrder) return station.stationName || '';
+      }
+    }
+    return '';
+  },
+
+  resolveNextDistanceText(bus) {
+    if (!bus) return '';
+    const distance = Number(bus.busToStationNiheDistance);
+    if (isNaN(distance) || distance <= 0) return '';
+    if (distance >= 1000) return `${(distance / 1000).toFixed(1)}公里`;
+    return `${Math.round(distance)}米`;
+  },
+
+  resolveNextEtaText(bus) {
+    if (!bus) return '';
+    if (bus.busToStationTimeTips) return bus.busToStationTimeTips;
+    if (bus.busToStationTime != null) return `${bus.busToStationTime}分钟`;
+    return '';
+  },
+
+  apiPost(body) {
+    return new Promise((resolve, reject) => {
+      fetch.fetch({
+        url: API_URL,
+        method: 'POST',
+        header: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json, text/javascript, */*; q=0.01',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': 'https://h5.mygolbs.com/?areacode=qz595803',
+          'Origin': 'https://h5.mygolbs.com'
+        },
+        data: body,
+        responseType: 'json',
+        success: (response) => resolve(response.data ? response.data : response),
+        fail: (err) => reject(err)
+      });
+    });
+  }
+}
+</script>
+
+<style>
+.page {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 336px;
+  background-color: #121921;
+  overflow: hidden;
+}
+
+.detail-nav {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 94px;
+  background-color: rgba(18,25,33,0.96);
+  border-bottom: 2px solid rgba(255,255,255,0.05);
+}
+
+.round-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 27px;
+  justify-content: center;
+  align-items: center;
+}
+
+.back-btn {
+  position: absolute;
+  left: 28px;
+  top: 14px;
+  background-color: rgba(255,255,255,0.10);
+}
+
+.back-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.detail-title-wrap {
+  position: absolute;
+  left: 88px;
+  top: 12px;
+  width: 172px;
+  height: 66px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.route-title {
+  width: 172px;
+  line-height: 36px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.route-sub-hit {
+  width: 172px;
+  min-height: 28px;
+  padding: 2px 0px 4px 0px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.route-sub {
+  width: 172px;
+  line-height: 26px;
+  font-size: 18px;
+  font-weight: bold;
+  color: rgba(255,255,255,0.62);
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.route-sub-link {
+  color: rgba(147, 197, 253, 0.96);
+}
+
+.direction-btn {
+  position: absolute;
+  left: 254px;
+  top: 14px;
+  width: 54px;
+  height: 54px;
+  border-radius: 27px;
+  background-color: rgba(251,146,60,0.18);
+}
+
+.direction-btn-text {
+  width: 54px;
+  line-height: 54px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #fb923c;
+  text-align: center;
+}
+
+.stations-list {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 336px;
+  height: 242px;
+  padding: 12px 20px 26px 20px;
+  background-color: #121921;
+}
+
+.station-item {
+  width: 296px;
+  height: 82px;
+  margin-bottom: 12px;
+  background-color: transparent;
+}
+
+.station-card {
+  width: 296px;
+  height: 82px;
+  border-radius: 22px;
+  border: 2px solid rgba(255,255,255,0.05);
+  background-color: rgba(255,255,255,0.06);
+  padding: 14px 16px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.station-card-current {
+  border-color: rgba(52,211,153,0.42);
+  background-color: rgba(52,211,153,0.12);
+}
+
+.station-order {
+  width: 42px;
+  height: 42px;
+  border-radius: 21px;
+  background-color: rgba(255,255,255,0.10);
+  line-height: 42px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+}
+
+.station-main {
+  margin-left: 14px;
+  width: 136px;
+  height: 50px;
+  flex-direction: column;
+}
+
+.station-name {
+  width: 136px;
+  line-height: 30px;
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffffff;
+  text-overflow: ellipsis;
+}
+
+.station-sub {
+  width: 136px;
+  line-height: 20px;
+  font-size: 17px;
+  font-weight: bold;
+  color: #9ca3af;
+  text-overflow: ellipsis;
+}
+
+.bus-marker {
+  margin-left: 8px;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background-color: rgba(251,146,60,0.18);
+  justify-content: center;
+  align-items: center;
+}
+
+.bus-marker-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.state-layer {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 336px;
+  height: 242px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.empty-icon {
+  width: 96px;
+  height: 96px;
+}
+
+.state-text {
+  margin-top: 12px;
+  width: 300px;
+  line-height: 40px;
+  font-size: 28px;
+  font-weight: bold;
+  color: rgba(255,255,255,0.78);
+  text-align: center;
+}
+
+.edge-back-zone {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 24px;
+  height: 242px;
+  background-color: rgba(0,0,0,0.01);
+}
+</style>

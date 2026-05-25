@@ -1,0 +1,78 @@
+<template>
+  <div class="column page">
+    <text class="header">设备通信 interconnect</text>
+    <div class="column group">
+
+      <input type="button" class="btn" @click="handleCreateConn" value="创建连接" />
+      <input type="button" class="btn" @click="handleSendMessage" value="发送消息" />
+      <div>
+        <text class="font-14 mr-10">data sent: {{sendData}}</text>
+      </div>
+      <div>
+        <text class="font-14 mr-10">data received: {{receiveData}}</text>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  import interconnect from '@system.interconnect'
+  let conn = null
+  export default {
+    private: {
+      sendData: '',
+      receiveData: ''
+    },
+    handleCreateConn() {
+      console.log('-------------创建连接----------------')
+      conn = interconnect.instance()
+      conn.getReadyState({
+        success: data => {
+          if (data.status === 1) {
+            console.log('-----------------连接成功-----------------')
+          } else if (data.status === 2) {
+            console.log('-----------------连接失败-----------------')
+          }
+        },
+        fail: (data, code) => {
+          console.log(`-----------------getReadyState handling fail, code = ${code}-----------------`)
+        }
+      })
+      conn.onmessage = (data) => {
+        console.log(`-----------------onmessage received message-------------------: ${data.data}`)
+        this.receiveData = data.data
+      }
+      conn.onopen = () => {
+        console.log(`-----------------connection opened-----------------`)
+      }
+      conn.onclose = (data) => {
+        console.log(`-----------------connection closed, reason = ${data.data}, code = ${data.code}-----------------`)
+      }
+      conn.onerror = (data) => {
+        console.log(`-----------------connection error, errMsg = ${data.data}, errCode = ${data.code}--------------`)
+      }
+    },
+    handleSendMessage() {
+      let data = {
+        name: 'Amy',
+        age: 18,
+        t: Date.now()
+      }
+      console.log('---------------发送消息---------------', data)
+      this.sendData = JSON.stringify(data)
+      conn.send({
+        data: data,
+        success: () => {
+          console.log(`----------------send handling success------------`)
+        },
+        fail: (data) => {
+          console.log(`--------------send handling fail, errMsg = ${data.data}, errCode = ${data.code}-------------`)
+        },
+      })
+    }
+  }
+</script>
+
+<style>
+  @import '../../style/comm.css';
+</style>

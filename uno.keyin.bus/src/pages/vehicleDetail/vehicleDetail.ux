@@ -1,0 +1,338 @@
+<template>
+  <div class="page" style="height: {{pageHeight}}px;">
+    <div class="detail-nav">
+      <div class="round-btn back-btn" @click="back">
+        <image static src="/common/images/icon_back1.png" class="back-icon" />
+      </div>
+      <div class="title-wrap">
+        <text static class="title-text">车辆详情</text>
+        <text class="sub-title" style="lines:1;">{{routeTitle || normalizeLineName(linename)}}</text>
+      </div>
+      <div class="nav-placeholder"></div>
+    </div>
+
+    <div class="content" style="height: {{contentHeight}}px;">
+      <div class="bus-hero">
+        <image static src="/common/images/icon_bus.png" class="bus-icon" />
+        <text class="bus-number" style="lines:1;">{{getBusNumberText()}}</text>
+      </div>
+
+      <div class="info-list">
+        <div class="info-row">
+          <text static class="info-label">线路</text>
+          <text class="info-value" style="lines:1;">{{normalizeLineName(linename)}}</text>
+        </div>
+        <div class="info-row">
+          <text static class="info-label">方向</text>
+          <text class="info-value" style="lines:1;">方向 {{direction}}</text>
+        </div>
+        <div class="info-row">
+          <text static class="info-label">站点</text>
+          <text class="info-value" style="lines:1;">{{stationname || '未知站点'}}</text>
+        </div>
+        <div class="info-row">
+          <text static class="info-label">已到</text>
+          <text class="info-value" style="lines:1;">{{getStopOrderText()}}</text>
+        </div>
+        <div class="info-row">
+          <text static class="info-label">下站</text>
+          <text class="info-value" style="lines:1;">{{getNextStationText()}}</text>
+        </div>
+        <div class="info-row">
+          <text static class="info-label">还需</text>
+          <text class="info-value" style="lines:1;">{{getNextArrivalText()}}</text>
+        </div>
+      </div>
+    </div>
+
+    <div class="edge-back-zone" style="height: {{contentHeight}}px;" @swipe="onEdgeBackSwipe"></div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import device from '@system.device';
+
+const DESIGN_WIDTH = 336;
+const DEFAULT_PAGE_HEIGHT = 336;
+const DETAIL_TOP = 94;
+
+export default {
+  protected: {
+    linename: '',
+    direction: '1',
+    stationorder: '',
+    stationname: '',
+    routeTitle: '',
+    busNumber: '',
+    stopOrder: '',
+    nextStationName: '',
+    nextDistanceText: '',
+    nextEtaText: '',
+    busInfo: ''
+  },
+  private: {
+    pageHeight: DEFAULT_PAGE_HEIGHT,
+    contentHeight: DEFAULT_PAGE_HEIGHT - DETAIL_TOP,
+    busData: {}
+  },
+
+  onInit() {
+    this.direction = String(this.direction != null ? this.direction : '1');
+    this.stationorder = String(this.stationorder != null ? this.stationorder : '');
+    this.stopOrder = String(this.stopOrder != null ? this.stopOrder : '');
+    this.initLayout();
+    this.parseBusInfo();
+  },
+
+  back() {
+    router.back();
+  },
+
+  onEdgeBackSwipe(e) {
+    if (e && e.direction === 'right') {
+      this.back();
+    }
+  },
+
+  initLayout() {
+    if (!device || typeof device.getInfo !== 'function') {
+      this.applyLayout(DEFAULT_PAGE_HEIGHT);
+      return;
+    }
+
+    device.getInfo({
+      success: (info) => {
+        const width = Number(info && info.screenWidth) || DESIGN_WIDTH;
+        const height = Number(info && info.screenHeight) || DEFAULT_PAGE_HEIGHT;
+        const scaledHeight = Math.floor(height * DESIGN_WIDTH / width);
+        this.applyLayout(scaledHeight);
+      },
+      fail: () => {
+        this.applyLayout(DEFAULT_PAGE_HEIGHT);
+      }
+    });
+  },
+
+  applyLayout(height) {
+    const safeHeight = Math.max(Math.min(Number(height) || DEFAULT_PAGE_HEIGHT, 520), 300);
+    this.pageHeight = safeHeight;
+    this.contentHeight = Math.max(safeHeight - DETAIL_TOP, 200);
+  },
+
+  parseBusInfo() {
+    if (!this.busInfo) return;
+
+    try {
+      const data = JSON.parse(decodeURIComponent(this.busInfo));
+      this.busData = data || {};
+      if (!this.busNumber && data && data.busNumber) {
+        this.busNumber = data.busNumber;
+      }
+      if (!this.stopOrder && data && data.stopOrder != null) {
+        this.stopOrder = String(data.stopOrder);
+      }
+      if (!this.nextStationName && data && data.nextStationName) {
+        this.nextStationName = data.nextStationName;
+      }
+      if (!this.nextDistanceText && data && data.nextDistanceText) {
+        this.nextDistanceText = data.nextDistanceText;
+      }
+      if (!this.nextEtaText && data && data.nextEtaText) {
+        this.nextEtaText = data.nextEtaText;
+      }
+    } catch (e) {
+      this.busData = {};
+    }
+  },
+
+  normalizeLineName(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return '未知线路';
+    if (raw.indexOf('路') >= 0) return raw;
+    return `${raw}路`;
+  },
+
+  getBusNumberText() {
+    return this.busNumber || (this.busData && this.busData.busNumber) || '车辆';
+  },
+
+  getStopOrderText() {
+    const order = this.stopOrder || this.stationorder;
+    if (!order) return '未知位置';
+    return `第 ${order} 站`;
+  },
+
+  getNextStationText() {
+    return this.nextStationName || (this.busData && this.busData.nextStationName) || '未知站点';
+  },
+
+  getNextArrivalText() {
+    const eta = this.nextEtaText || (this.busData && this.busData.nextEtaText) || '';
+    const distance = this.nextDistanceText || (this.busData && this.busData.nextDistanceText) || '';
+    if (eta && distance) return `${eta} / ${distance}`;
+    if (eta) return eta;
+    if (distance) return distance;
+    return '暂无估算';
+  }
+}
+</script>
+
+<style>
+.page {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 336px;
+  background-color: #121921;
+  overflow: hidden;
+}
+
+.detail-nav {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 336px;
+  height: 94px;
+  background-color: rgba(18,25,33,0.96);
+  border-bottom: 2px solid rgba(255,255,255,0.05);
+}
+
+.round-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 27px;
+  justify-content: center;
+  align-items: center;
+}
+
+.back-btn {
+  position: absolute;
+  left: 28px;
+  top: 14px;
+  background-color: rgba(255,255,255,0.10);
+}
+
+.back-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.title-wrap {
+  position: absolute;
+  left: 88px;
+  top: 12px;
+  width: 172px;
+  height: 66px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.title-text {
+  width: 172px;
+  line-height: 36px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+}
+
+.sub-title {
+  width: 172px;
+  line-height: 26px;
+  font-size: 18px;
+  font-weight: bold;
+  color: rgba(255,255,255,0.62);
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.nav-placeholder {
+  position: absolute;
+  left: 254px;
+  top: 14px;
+  width: 54px;
+  height: 54px;
+}
+
+.content {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 336px;
+  height: 242px;
+  padding: 12px 20px 20px 20px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bus-hero {
+  width: 296px;
+  height: 74px;
+  border-radius: 22px;
+  border: 2px solid rgba(251,146,60,0.28);
+  background-color: rgba(251,146,60,0.12);
+  flex-direction: row;
+  align-items: center;
+  padding: 13px 20px;
+}
+
+.bus-icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.bus-number {
+  margin-left: 18px;
+  width: 190px;
+  line-height: 48px;
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+  text-overflow: ellipsis;
+}
+
+.info-list {
+  margin-top: 10px;
+  width: 296px;
+  height: 150px;
+  flex-direction: column;
+}
+
+.info-row {
+  width: 296px;
+  height: 28px;
+  margin-bottom: 2px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.info-label {
+  width: 64px;
+  line-height: 28px;
+  font-size: 18px;
+  font-weight: bold;
+  color: rgba(255,255,255,0.50);
+}
+
+.info-value {
+  width: 220px;
+  line-height: 28px;
+  font-size: 21px;
+  font-weight: bold;
+  color: #ffffff;
+  text-overflow: ellipsis;
+}
+
+.edge-back-zone {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 24px;
+  height: 242px;
+  background-color: rgba(0,0,0,0.01);
+}
+</style>
