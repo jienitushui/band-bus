@@ -14,6 +14,7 @@ desktop.ini
 
 # --- Gradle / Android ---
 .gradle/
+/.codex-gradle-home/
 **/build/
 local.properties
 *.apk

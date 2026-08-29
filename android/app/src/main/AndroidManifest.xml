@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"
@@ -35,6 +36,11 @@
             android:name=".SettingsActivity"
             android:exported="false"
             android:label="@string/title_settings" />
+
+        <activity
+            android:name=".CitySelectionActivity"
+            android:exported="false"
+            android:label="@string/title_city_selection" />
 
         <service
             android:name=".LocationRelayService"

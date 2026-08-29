@@ -1,3 +1,8 @@
+import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,6 +11,11 @@ plugins {
 // debug 真机调试：把快应用 sign/debug 下的「公钥证书」打进 APK assets（不含 private.pem）
 val interconnectCertDebug = rootProject.projectDir.resolve("../uno.keyin.bus/sign/debug/certificate.pem").normalize()
 val interconnectDebugAssetsDir = layout.buildDirectory.dir("generated/interconnect-debug-assets")
+val interconnectKeystore = rootProject.projectDir.resolve(
+    "../interconnect_dev_test_demo/XMS Wearable Demo/xms-wearable-sdk/keystore/keystore.jks"
+).normalize()
+val interconnectStorePassword = "xmswearable"
+val interconnectKeyAlias = "xmswearable"
 
 android {
     namespace = "uno.keyin.bus"
@@ -23,13 +33,10 @@ android {
     // 与 interconnect_dev_test_demo 共用同一套 keystore，便于与已从 demo 同步的 sign/*.pem 做 interconnect 调试
     signingConfigs {
         create("interconnectDemo") {
-            val demoJks = rootProject.projectDir.resolve(
-                "../interconnect_dev_test_demo/XMS Wearable Demo/xms-wearable-sdk/keystore/keystore.jks"
-            ).normalize()
-            storeFile = file(demoJks)
-            storePassword = "xmswearable"
-            keyAlias = "xmswearable"
-            keyPassword = "xmswearable"
+            storeFile = file(interconnectKeystore)
+            storePassword = interconnectStorePassword
+            keyAlias = interconnectKeyAlias
+            keyPassword = interconnectStorePassword
         }
     }
 
@@ -63,9 +70,51 @@ android {
     }
 }
 
+val verifyDebugInterconnectSigning = tasks.register("verifyDebugInterconnectSigning") {
+    group = "verification"
+    description = "Fail unless the debug APK keystore and watch quick-app certificate use the same key"
+    inputs.files(interconnectCertDebug, interconnectKeystore)
+
+    doLast {
+        if (!interconnectCertDebug.isFile) {
+            throw GradleException(
+                "Missing ${interconnectCertDebug.path}. Export certificate.pem and private.pem " +
+                    "from the Android debug keystore before building the paired APK/RPK."
+            )
+        }
+        if (!interconnectKeystore.isFile) {
+            throw GradleException("Missing Android signing keystore: ${interconnectKeystore.path}")
+        }
+
+        val certificateFactory = CertificateFactory.getInstance("X.509")
+        val watchCertificate = interconnectCertDebug.inputStream().use {
+            certificateFactory.generateCertificate(it) as X509Certificate
+        }
+        val keyStore = KeyStore.getInstance(
+            interconnectKeystore,
+            interconnectStorePassword.toCharArray(),
+        )
+        val androidCertificate = keyStore.getCertificate(interconnectKeyAlias)
+            ?: throw GradleException(
+                "Alias '$interconnectKeyAlias' was not found in ${interconnectKeystore.path}"
+            )
+
+        if (!MessageDigest.isEqual(
+                androidCertificate.publicKey.encoded,
+                watchCertificate.publicKey.encoded,
+            )
+        ) {
+            throw GradleException(
+                "Interconnect signing mismatch: Android keystore and " +
+                    "uno.keyin.bus/sign/debug/certificate.pem use different public keys."
+            )
+        }
+    }
+}
+
 val copyDebugInterconnectCertificate = tasks.register<org.gradle.api.tasks.Copy>("copyDebugInterconnectCertificate") {
     description = "Pack public certificate.pem into debug APK assets/interconnect/ (never private.pem)"
-    onlyIf { interconnectCertDebug.isFile }
+    dependsOn(verifyDebugInterconnectSigning)
     from(interconnectCertDebug)
     into(interconnectDebugAssetsDir.map { it.dir("interconnect").asFile })
 }

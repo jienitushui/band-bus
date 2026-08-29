@@ -52,15 +52,17 @@ import device from '@system.device'
 const DESIGN_WIDTH = 336;
 const DEFAULT_PAGE_HEIGHT = 336;
 const DETAIL_LIST_TOP = 94;
-const CITYNAME = '泉州市';
-const CITYKEY = 'qz595803';
+const DEFAULT_CITY_NAME = '泉州市';
+const DEFAULT_CITY_KEY = 'qz595803';
 const API_URL = 'https://h5.mygolbs.com/ApiData.do';
 
 export default {
   protected: {
     linename: '',
     direction: '1',
-    stationorder: '0'
+    stationorder: '0',
+    cityName: '',
+    cityKey: ''
   },
   private: {
     loading: false,
@@ -79,6 +81,10 @@ export default {
     schedulePlan104: ''
   },
   onInit() {
+    this.cityName = this.cityName ? String(this.cityName) : DEFAULT_CITY_NAME;
+    this.cityKey = this.cityKey != null && this.cityKey !== ''
+      ? String(this.cityKey)
+      : (this.cityName === DEFAULT_CITY_NAME ? DEFAULT_CITY_KEY : '');
     this.direction = String(this.direction != null ? this.direction : '1');
     this.stationorder = String(this.stationorder != null ? this.stationorder : '0');
     this.initLayout();
@@ -281,7 +287,7 @@ export default {
 
     try {
       const body =
-        `CMD=103&CITYNAME=${encodeURIComponent(CITYNAME)}&LINENAME=${encodeURIComponent(lineName)}&DIRECTION=${this.direction}&CITYKEY=${CITYKEY}`;
+        `CMD=103&CITYNAME=${encodeURIComponent(this.cityName)}&LINENAME=${encodeURIComponent(lineName)}&DIRECTION=${this.direction}&CITYKEY=${encodeURIComponent(this.cityKey)}`;
 
       const apiResp = await this.apiPost(body);
 
@@ -316,7 +322,7 @@ export default {
 
     try {
       const body =
-        `CMD=104&CITYNAME=${encodeURIComponent(CITYNAME)}&LINENAME=${encodeURIComponent(lineName)}&DIRECTION=${this.direction}&CITYKEY=${CITYKEY}&STATIONORDER=${this.stationorder}`;
+        `CMD=104&CITYNAME=${encodeURIComponent(this.cityName)}&LINENAME=${encodeURIComponent(lineName)}&DIRECTION=${this.direction}&CITYKEY=${encodeURIComponent(this.cityKey)}&STATIONORDER=${this.stationorder}`;
 
       const realtime = await this.apiPost(body);
       const buses = Array.isArray(realtime && realtime.list) ? realtime.list : [];
@@ -421,7 +427,9 @@ export default {
           'Accept': 'application/json, text/javascript, */*; q=0.01',
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           'X-Requested-With': 'XMLHttpRequest',
-          'Referer': 'https://h5.mygolbs.com/?areacode=qz595803',
+          'Referer': this.cityKey
+            ? `https://h5.mygolbs.com/?areacode=${encodeURIComponent(this.cityKey)}`
+            : 'https://h5.mygolbs.com/',
           'Origin': 'https://h5.mygolbs.com'
         },
         data: body,

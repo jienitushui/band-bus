@@ -19,6 +19,8 @@
         </div>
 
         <div class="station-pill" @click="openStationList">
+          <text class="home-city-name" style="lines:1;">{{currentCityDisplayName}}</text>
+          <div class="home-city-divider"></div>
           <image static src="/common/images/icon_bus.png" class="station-bus-icon" />
           <text class="station-name" style="lines:1;">{{stationName}}</text>
           <image static src="/common/images/icon_arrow_right.png" class="station-arrow" />
@@ -114,8 +116,10 @@ function getVibeVibrator() {
 const DEFAULT_LAT = 24.874132;
 const DEFAULT_LNG = 118.675675;
 const API_URL = 'https://h5.mygolbs.com/ApiData.do';
-const CITY_NAME = '泉州市';
-const CITY_KEY = 'qz595803';
+const DEFAULT_CITY_NAME = '泉州市';
+const DEFAULT_CITY_DISPLAY_NAME = '泉州';
+const DEFAULT_CITY_KEY = 'qz595803';
+const CITY_CONFIG_CACHE_KEY = 'BUS_CURRENT_CITY';
 const LOCATION_CACHE_KEY = 'BUS_LAST_LOCATION';
 const DESIGN_WIDTH = 336;
 const DEFAULT_PAGE_HEIGHT = 336;
@@ -171,6 +175,12 @@ export default {
     nowTime: '00:00',
     timer: null,
     timeFormat: '24h',
+    currentCityName: DEFAULT_CITY_NAME,
+    currentCityDisplayName: DEFAULT_CITY_DISPLAY_NAME,
+    currentCityKey: DEFAULT_CITY_KEY,
+    currentCityVersion: 0,
+    cityConfigLoaded: false,
+    homeBootstrapStarted: false,
 
     stationName: '附近站点',
     loadingBus: true,
@@ -292,12 +302,39 @@ export default {
           this.homeViewMode = 'vibe';
           this.applyVibeStatus('idle');
         }
-        this.bootstrapAfterHomeModeReady();
+        this.loadCityConfigAndBootstrap();
       },
       fail: () => {
-        this.bootstrapAfterHomeModeReady();
+        this.loadCityConfigAndBootstrap();
       }
     });
+  },
+
+  loadCityConfigAndBootstrap() {
+    storage.get({
+      key: CITY_CONFIG_CACHE_KEY,
+      default: '',
+      success: (value) => {
+        if (!this.cityConfigLoaded) {
+          try {
+            const city = typeof value === 'string' ? JSON.parse(value) : value;
+            this.applyCityConfig(city, false);
+          } catch (e) {}
+          this.cityConfigLoaded = true;
+        }
+        this.startHomeBootstrapOnce();
+      },
+      fail: () => {
+        this.cityConfigLoaded = true;
+        this.startHomeBootstrapOnce();
+      }
+    });
+  },
+
+  startHomeBootstrapOnce() {
+    if (this.homeBootstrapStarted) return;
+    this.homeBootstrapStarted = true;
+    this.bootstrapAfterHomeModeReady();
   },
 
   bootstrapAfterHomeModeReady() {
@@ -321,6 +358,7 @@ export default {
       icConnect = interconnect.instance();
       icConnect.onopen = () => {
         this.pushInterconnectFlowLog('手机互联已连接');
+        this.requestPhoneCityConfig();
         if (this.homeViewMode === 'vibe') {
           return;
         }
@@ -341,7 +379,19 @@ export default {
         const raw = data && data.data !== undefined && data.data !== null ? String(data.data) : '';
         try {
           const o = JSON.parse(raw);
+          if (o && o.type === 'city_config') {
+            this.applyCityConfig(o, true);
+            return;
+          }
           if (o && o.type === 'relay_heartbeat') {
+            if (o.cityName) {
+              this.applyCityConfig({
+                cityName: o.cityName,
+                displayName: o.cityDisplayName,
+                cityKey: o.cityKey,
+                version: o.cityVersion
+              }, true);
+            }
             const wf = o.watchGpsAfterPhoneFailures;
             if (wf != null && wf !== '') {
               const n = parseInt(String(wf), 10);
@@ -463,6 +513,59 @@ export default {
       };
     } catch (e) {
       console.error('interconnect init failed', e);
+    }
+  },
+
+  requestPhoneCityConfig() {
+    if (!icConnect) return;
+    try {
+      icConnect.send({
+        data: { type: 'request_city_config', ts: Date.now() },
+        success: () => {},
+        fail: () => {}
+      });
+    } catch (e) {}
+  },
+
+  applyCityConfig(city, reload) {
+    if (!city || !city.cityName) return;
+    const name = String(city.cityName).trim();
+    if (!name) return;
+    const key = city.cityKey != null ? String(city.cityKey) : '';
+    const display = city.displayName != null && String(city.displayName).trim()
+      ? String(city.displayName).trim()
+      : name.replace(/特别行政区$|自治州$|地区$|市$/, '');
+    const versionNum = Number(city.version);
+    const version = isNaN(versionNum) ? 0 : versionNum;
+    if (version > 0 && this.currentCityVersion > 0 && version < this.currentCityVersion) return;
+    const changed = name !== this.currentCityName || key !== this.currentCityKey;
+    if (!changed && version <= this.currentCityVersion) return;
+
+    this.currentCityName = name;
+    this.currentCityDisplayName = display || name;
+    this.currentCityKey = key;
+    this.currentCityVersion = version;
+    this.cityConfigLoaded = true;
+    storage.set({
+      key: CITY_CONFIG_CACHE_KEY,
+      value: JSON.stringify({ cityName: name, displayName: display, cityKey: key, version }),
+      fail: () => {}
+    });
+
+    if (!changed || !reload || !this.homeBootstrapStarted) return;
+    this.busRequestId += 1;
+    this.homeDirectionRequestId += 1;
+    this.lastNearbyFetchKey = '';
+    this.lastNearbyFetchAt = 0;
+    this.stationName = '附近站点';
+    this.nearbyStations = [];
+    this.applyBusList([]);
+    this.lineDirection = '1';
+    this.loadingBus = true;
+    this.loadingText = `正在加载${this.currentCityDisplayName}公交…`;
+    prompt.showToast({ message: `已切换至${this.currentCityDisplayName}`, duration: 1800 });
+    if (this.homeViewMode === 'bus') {
+      this.loadBusRoutes({ force: true, preferNearestStation: true });
     }
   },
 
@@ -1111,8 +1214,8 @@ export default {
   fetchNearbyStations(lat, lng) {
     return this.apiPost({
       CMD: '106',
-      CITYNAME: CITY_NAME,
-      CITYKEY: CITY_KEY,
+      CITYNAME: this.currentCityName,
+      CITYKEY: this.currentCityKey,
       LAT: lat,
       LNG: lng
     }).then((payload) => {
@@ -1140,8 +1243,8 @@ export default {
     const nameStr = m.name ? String(m.name) : String(this.stationName || '');
     return this.apiPost({
       CMD: '115',
-      CITYNAME: CITY_NAME,
-      CITYKEY: CITY_KEY,
+      CITYNAME: this.currentCityName,
+      CITYKEY: this.currentCityKey,
       STATIONNAME: nameStr,
       MYLAT: latS,
       MYLNG: lngS,
@@ -1163,8 +1266,8 @@ export default {
         : String(this.myLng);
     return this.apiPost({
       CMD: '209',
-      CITYNAME: CITY_NAME,
-      CITYKEY: CITY_KEY,
+      CITYNAME: this.currentCityName,
+      CITYKEY: this.currentCityKey,
       STATIONNAME: station && station.name ? station.name : this.stationName,
       MYLAT: lat0,
       MYLNG: lng0,
@@ -1263,8 +1366,8 @@ export default {
     const direction = String(this.lineDirection) === '2' ? '2' : '1';
     return this.apiPost({
       CMD: '104',
-      CITYNAME: CITY_NAME,
-      CITYKEY: CITY_KEY,
+      CITYNAME: this.currentCityName,
+      CITYKEY: this.currentCityKey,
       LINENAME: lineNameWithLu,
       DIRECTION: direction,
       STATIONORDER: stationOrderStr != null ? String(stationOrderStr) : '0'
@@ -1381,7 +1484,9 @@ export default {
             'Accept': 'application/json, text/javascript, */*; q=0.01',
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
             'X-Requested-With': 'XMLHttpRequest',
-            'Referer': 'https://h5.mygolbs.com/?areacode=qz595803',
+            'Referer': this.currentCityKey
+              ? `https://h5.mygolbs.com/?areacode=${encodeURIComponent(this.currentCityKey)}`
+              : 'https://h5.mygolbs.com/',
             'Origin': 'https://h5.mygolbs.com'
           },
           data: body,
@@ -2063,7 +2168,9 @@ export default {
       params: {
         linename,
         direction,
-        stationorder
+        stationorder,
+        cityName: this.currentCityName,
+        cityKey: this.currentCityKey
       }
     });
   },
@@ -2248,13 +2355,31 @@ export default {
 }
 
 .station-name {
-  width: 226px;
+  width: 148px;
   line-height: 38px;
   font-size: 24px;
   font-weight: bold;
   color: #fb923c;
   text-align: center;
   text-overflow: ellipsis;
+}
+
+.home-city-name {
+  width: 66px;
+  line-height: 38px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.home-city-divider {
+  width: 1px;
+  height: 22px;
+  margin-left: 4px;
+  margin-right: 8px;
+  background-color: rgba(255,255,255,0.18);
 }
 
 .station-arrow {

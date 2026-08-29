@@ -93,6 +93,14 @@ class LocationRelayService : Service() {
         when (intent?.action) {
             ACTION_REFRESH_NOTIF_WATCHDOG,
             ACTION_REAPPLY_RELAY_PREFS -> applyRelayUiPrefsFromIntent()
+            ACTION_PUSH_CITY_CONFIG -> {
+                listenerRegisteredForNode?.let { nodeId ->
+                    sendCityConfig(nodeId)
+                    lastProactiveSnapshotNodeId = null
+                    maybeSendProactiveLocationSnapshot(nodeId)
+                }
+                mainHandler.post { refreshNodeAndRegisterListener(forceRelisten = true) }
+            }
         }
         return START_STICKY
     }
@@ -105,9 +113,13 @@ class LocationRelayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        if (!PhoneLocationHelper.hasLocationPermission(applicationContext)) {
+            stopSelf()
+            return
+        }
         ensureChannel()
         lastNotificationText = getString(R.string.relay_notif_default)
-        startForeground(NOTIFICATION_ID, buildNotification(lastNotificationText))
+        if (!startForegroundSafely(buildNotification(lastNotificationText))) return
         XmsWearSdkBridge.registerWearServiceConnectionListener(
             applicationContext,
             onConnected = {
@@ -147,11 +159,21 @@ class LocationRelayService : Service() {
                 val nm = ContextCompat.getSystemService(ctx, NotificationManager::class.java)
                 val stillThere = nm?.activeNotifications?.any { it.id == NOTIFICATION_ID } == true
                 if (!stillThere) {
-                    startForeground(NOTIFICATION_ID, buildNotification(lastNotificationText))
+                    if (!startForegroundSafely(buildNotification(lastNotificationText))) return
                     mainHandler.post { refreshNodeAndRegisterListener(forceRelisten = true) }
                 }
             }
             mainHandler.postDelayed(this, intervalMs)
+        }
+    }
+
+    private fun startForegroundSafely(notification: Notification): Boolean {
+        return runCatching {
+            startForeground(NOTIFICATION_ID, notification)
+            true
+        }.getOrElse {
+            stopSelf()
+            false
         }
     }
 
@@ -172,6 +194,11 @@ class LocationRelayService : Service() {
             put("watchGpsAfterPhoneFailures", RelayUiPrefs.getWatchGpsAfterPhoneFailures(applicationContext))
             put("showWatchDebugUi", RelayUiPrefs.isShowWatchDebugUi(applicationContext))
             put("vibeStatusApiUrl", RelayUiPrefs.getVibeStatusApiUrl(applicationContext))
+            val city = CityConfigStore.get(applicationContext)
+            put("cityName", city.cityName)
+            put("cityDisplayName", city.displayName)
+            put("cityKey", city.cityKey)
+            put("cityVersion", city.version)
             put(
                 "watchDefaultHome",
                 if (RelayUiPrefs.isWatchDefaultHomeVibe(applicationContext)) "vibe" else "bus",
@@ -278,7 +305,10 @@ class LocationRelayService : Service() {
             onBytes = { _, bytes -> handleWatchPayload(nodeId, bytes) },
             onOk = {
                 updateNotification(getString(R.string.relay_notif_listening))
-                mainHandler.post { maybeSendProactiveLocationSnapshot(nodeId) }
+                mainHandler.post {
+                    sendCityConfig(nodeId)
+                    maybeSendProactiveLocationSnapshot(nodeId)
+                }
             },
             onErr = {
                 updateNotification(getString(R.string.relay_notif_listen_fail, it))
@@ -328,11 +358,24 @@ class LocationRelayService : Service() {
             TYPE_WATCH_APP_SESSION -> {
                 touchLocationSessionFromWatch()
                 rescheduleLocationWarmupSoon()
+                sendCityConfig(nodeId)
                 return
             }
+            TYPE_REQUEST_CITY_CONFIG -> sendCityConfig(nodeId)
             TYPE_REQUEST_LOCATION -> handleWatchLocationRequest(nodeId, json)
             else -> return
         }
+    }
+
+    private fun sendCityConfig(nodeId: String) {
+        val payload = CityConfigStore.toPayload(CityConfigStore.get(applicationContext)).toString()
+        XmsWearSdkBridge.sendTextToNode(
+            applicationContext,
+            nodeId,
+            payload,
+            onOk = {},
+            onErr = {},
+        )
     }
 
     private fun handleWatchLocationRequest(nodeId: String, json: JSONObject) {
@@ -438,6 +481,8 @@ class LocationRelayService : Service() {
         /** MainActivity 修改中继相关偏好后触发：通知守护 + 心跳间隔等 */
         const val ACTION_REAPPLY_RELAY_PREFS = "uno.keyin.bus.action.REAPPLY_RELAY_PREFS"
 
+        const val ACTION_PUSH_CITY_CONFIG = "uno.keyin.bus.action.PUSH_CITY_CONFIG"
+
         /** 手表侧忽略；经 Wear 发往手表以保持消息通道活跃（锁屏休眠后易超时） */
         const val TYPE_RELAY_HEARTBEAT = "relay_heartbeat"
 
@@ -445,6 +490,7 @@ class LocationRelayService : Service() {
         const val TYPE_WATCH_APP_SESSION = "watch_app_session"
 
         const val TYPE_REQUEST_LOCATION = "request_location"
+        const val TYPE_REQUEST_CITY_CONFIG = "request_city_config"
         const val TYPE_PHONE_LOCATION_ERROR = "phone_location_error"
 
         /** 每 15s 一轮；每 4 轮（约 60s）在同节点上强制重绑 Wear 消息监听 */
@@ -461,9 +507,21 @@ class LocationRelayService : Service() {
 
         private const val WARMUP_FIRST_DELAY_MS = 400L
 
-        fun start(context: Context) {
+        fun start(context: Context): Boolean {
+            if (!PhoneLocationHelper.hasLocationPermission(context)) return false
             val i = Intent(context, LocationRelayService::class.java)
-            ContextCompat.startForegroundService(context, i)
+            return runCatching {
+                ContextCompat.startForegroundService(context, i)
+                true
+            }.getOrDefault(false)
+        }
+
+        fun pushCityConfig(context: Context) {
+            if (!PhoneLocationHelper.hasLocationPermission(context)) return
+            val intent = Intent(context, LocationRelayService::class.java).apply {
+                action = ACTION_PUSH_CITY_CONFIG
+            }
+            runCatching { ContextCompat.startForegroundService(context, intent) }
         }
     }
 }

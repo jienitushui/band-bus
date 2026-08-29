@@ -34,6 +34,7 @@
                     android:orientation="horizontal">
 
                     <LinearLayout
+                        android:id="@+id/citySelector"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -185,6 +186,17 @@
                     android:textSize="15sp"
                     tools:text="@string/placeholder_route_plan" />
             </ScrollView>
+
+            <TextView
+                android:id="@+id/textHomeState"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/home_screen_bg"
+                android:gravity="center"
+                android:padding="24dp"
+                android:textColor="#6B7280"
+                android:textSize="15sp"
+                android:visibility="gone" />
         </FrameLayout>
 
         <com.google.android.material.bottomnavigation.BottomNavigationView

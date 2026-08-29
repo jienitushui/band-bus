@@ -23,6 +23,18 @@ class BootRelayReceiver : BroadcastReceiver() {
                 PackageManager.PERMISSION_GRANTED
             if (!ok) return
         }
-        runCatching { LocationRelayService.start(app) }
+        val hasForegroundLocation =
+            ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!hasForegroundLocation) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_BACKGROUND_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        LocationRelayService.start(app)
     }
 }

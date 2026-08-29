@@ -340,6 +340,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun notifyRelayServicePrefsChanged() {
         if (!XmsWearSdkBridge.isSdkOnClasspath()) return
+        if (!PhoneLocationHelper.hasLocationPermission(this)) return
         runCatching {
             val i = Intent(this, LocationRelayService::class.java).apply {
                 action = LocationRelayService.ACTION_REAPPLY_RELAY_PREFS

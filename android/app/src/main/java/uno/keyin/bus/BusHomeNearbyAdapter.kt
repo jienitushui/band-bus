@@ -22,11 +22,22 @@ data class StationUi(
 
 class BusHomeNearbyAdapter : RecyclerView.Adapter<BusHomeNearbyAdapter.StationVH>() {
 
-    private val allStations: List<StationUi> = demoStationsNearby()
-    private var shown: List<StationUi> = allStations
+    private var allStations: List<StationUi> = emptyList()
+    private var shown: List<StationUi> = emptyList()
+    private var searchKeyword: String = ""
+
+    fun submitList(stations: List<StationUi>) {
+        allStations = stations
+        applyFilter()
+    }
 
     fun setSearchFilter(keyword: String) {
-        val k = keyword.trim()
+        searchKeyword = keyword.trim()
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        val k = searchKeyword
         shown = if (k.isEmpty()) {
             allStations
         } else {
@@ -78,22 +89,3 @@ class BusHomeNearbyAdapter : RecyclerView.Adapter<BusHomeNearbyAdapter.StationVH
         }
     }
 }
-
-private fun demoStationsNearby(): List<StationUi> = listOf(
-    StationUi(
-        name = "府文庙",
-        desc = "约 320m",
-        buses = listOf(
-            BusLineUi("K1路", "闽台缘博物馆", "3 分钟", "点击查看发车预测"),
-            BusLineUi("39路", "福厦铁路泉州站", "等待首站发车", "点击查看发车预测"),
-        ),
-    ),
-    StationUi(
-        name = "关帝庙",
-        desc = "约 580m",
-        buses = listOf(
-            BusLineUi("3路", "霞美", "8 分钟", null),
-            BusLineUi("4路", "清濛", "已到站", null),
-        ),
-    ),
-)
