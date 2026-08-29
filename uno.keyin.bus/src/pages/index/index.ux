@@ -1242,7 +1242,7 @@ export default {
       LNG: lng
     }).then((payload) => {
       const list = payload && Array.isArray(payload.data) ? payload.data : [];
-      return list.slice(0, 6).map((item, index) => ({
+      return list.map((item, index) => ({
         id: `station-${index}-${item.name || ''}`,
         name: item.name || '未知站点',
         lat: item.lat,
@@ -1463,7 +1463,7 @@ export default {
     const names = [];
     lines.forEach((line) => {
       const name = this.getBusRoute(line);
-      if (name && name !== '--' && names.indexOf(name) < 0 && names.length < 4) {
+      if (name && name !== '--' && names.indexOf(name) < 0) {
         names.push(name);
       }
     });
@@ -2046,6 +2046,8 @@ export default {
         stationName: this.stationName,
         myLat: String(this.myLat),
         myLng: String(this.myLng),
+        cityName: this.currentCityName,
+        cityKey: this.currentCityKey,
         stations: this.encodeStations(this.nearbyStations)
       }
     });

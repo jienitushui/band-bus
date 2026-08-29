@@ -9,13 +9,13 @@
     </div>
 
     <list class="station-list" bounces="false" style="height: {{stationListHeight}}px;" onscroll="onStationScroll" onscrollend="onStationScrollEnd" onscrolltop="onStationScrollTop" onscrollbottom="onStationScrollBottom">
-      <list-item for="{{nearbyStations}}" type="station" class="station-item" @click="selectStation($item)">
+      <list-item for="{{visibleStations}}" type="station" class="station-item" @click="selectStation($item)">
         <div class="station-item-header">
           <text class="station-item-name" style="lines:1;">{{$item.name}}</text>
           <text class="station-distance">{{$item.distance}}m</text>
         </div>
         <div class="station-lines">
-          <text for="{{$item.lines}}" class="line-tag">{{$item}}</text>
+          <text class="line-preview" style="lines:1;">{{getLinePreview($item)}}</text>
         </div>
       </list-item>
     </list>
@@ -45,6 +45,8 @@ export default {
     stationName: '',
     myLat: '',
     myLng: '',
+    cityName: '',
+    cityKey: '',
     stations: ''
   },
   private: {
@@ -55,7 +57,9 @@ export default {
     stationScrollbarHeight: 104,
     stationScrollbarTop: 0,
     stationScrollbarTimer: null,
-    nearbyStations: []
+    nearbyStations: [],
+    visibleStations: [],
+    visibleCount: 4
   },
 
   onInit() {
@@ -66,6 +70,7 @@ export default {
   onDestroy() {
     this.hideStationScrollbar();
     this.nearbyStations = null;
+    this.visibleStations = null;
   },
 
   initLayout() {
@@ -103,6 +108,8 @@ export default {
       const list = JSON.parse(decodeURIComponent(this.stations));
       if (Array.isArray(list) && list.length) {
         this.nearbyStations = list;
+        this.visibleCount = Math.min(4, list.length);
+        this.visibleStations = list.slice(0, this.visibleCount);
       }
     } catch (e) {}
   },
@@ -122,13 +129,23 @@ export default {
 
     const lon = station.lon || station.lng || '';
     router.push({
-      uri: '/pages/index',
+      uri: '/pages/stationLines',
       params: {
-        selectedStationName: station.name || '',
-        selectedStationLat: station.lat == null ? '' : String(station.lat),
-        selectedStationLon: lon == null ? '' : String(lon)
+        stationName: station.name || '',
+        stationLat: station.lat == null ? '' : String(station.lat),
+        stationLon: lon == null ? '' : String(lon),
+        cityName: this.cityName || '',
+        cityKey: this.cityKey || ''
       }
     });
+  },
+
+  getLinePreview(station) {
+    const lines = station && Array.isArray(station.lines) ? station.lines : [];
+    if (!lines.length) return '点击查看经过线路';
+    const preview = lines.slice(0, 3).join(' · ');
+    const remaining = lines.length - 3;
+    return remaining > 0 ? `${preview} · 还有${remaining}条` : preview;
   },
 
   onStationScroll(e) {
@@ -147,18 +164,22 @@ export default {
   },
 
   onStationScrollBottom() {
+    if (this.visibleCount < this.nearbyStations.length) {
+      this.visibleCount = Math.min(this.visibleCount + 4, this.nearbyStations.length);
+      this.visibleStations = this.nearbyStations.slice(0, this.visibleCount);
+    }
     const maxScroll = this.getStationMaxScroll();
     this.updateStationScrollbar(maxScroll);
     this.scheduleHideStationScrollbar();
   },
 
   getStationMaxScroll() {
-    const totalHeight = Array.isArray(this.nearbyStations) ? this.nearbyStations.length * STATION_ITEM_HEIGHT : 0;
+    const totalHeight = Array.isArray(this.visibleStations) ? this.visibleStations.length * STATION_ITEM_HEIGHT : 0;
     return Math.max(totalHeight - this.stationListHeight, 0);
   },
 
   updateStationScrollbar(scrollY, shouldShow) {
-    const totalHeight = Array.isArray(this.nearbyStations) ? this.nearbyStations.length * STATION_ITEM_HEIGHT : 0;
+    const totalHeight = Array.isArray(this.visibleStations) ? this.visibleStations.length * STATION_ITEM_HEIGHT : 0;
     if (totalHeight <= this.stationListHeight) {
       this.stationScrollbarVisible = false;
       this.stationScrollbarHeight = STATION_SCROLLBAR_TRACK_HEIGHT;
@@ -323,17 +344,14 @@ export default {
   align-items: center;
 }
 
-.line-tag {
-  margin-right: 6px;
+.line-preview {
+  width: 260px;
   height: 26px;
-  min-width: 34px;
-  padding: 0px 8px;
-  border-radius: 5px;
-  background-color: rgba(255,255,255,0.10);
   line-height: 26px;
   font-size: 17px;
   color: #9ca3af;
-  text-align: center;
+  text-align: left;
+  text-overflow: ellipsis;
 }
 
 .station-scrollbar-track {

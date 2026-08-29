@@ -1,10 +1,8 @@
 package uno.keyin.bus
 
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import uno.keyin.bus.databinding.ItemBusLineRowBinding
 import uno.keyin.bus.databinding.ItemStationCardBinding
 
 data class BusLineUi(
@@ -13,23 +11,54 @@ data class BusLineUi(
     val statusMain: String,
     val statusSub: String? = null,
     val directionCode: String = "1",
+    val stationOrder: Int = 0,
 )
+
+enum class StationLinesState { NOT_LOADED, LOADING, LOADED, ERROR }
 
 data class StationUi(
     val name: String,
     val desc: String,
-    val buses: List<BusLineUi>,
-)
+    val lat: String = "",
+    val lng: String = "",
+    val buses: List<BusLineUi> = emptyList(),
+    val linesState: StationLinesState = StationLinesState.NOT_LOADED,
+) {
+    val key: String get() = "$name|$lat|$lng"
+}
 
-class BusHomeNearbyAdapter : RecyclerView.Adapter<BusHomeNearbyAdapter.StationVH>() {
+class BusHomeNearbyAdapter(
+    private val onStationClick: (StationUi) -> Unit,
+) : RecyclerView.Adapter<BusHomeNearbyAdapter.StationVH>() {
+
+    companion object {
+        private const val STATION_PAGE_SIZE = 10
+        private const val PREVIEW_LINE_COUNT = 3
+    }
 
     private var allStations: List<StationUi> = emptyList()
     private var shown: List<StationUi> = emptyList()
-    private var searchKeyword: String = ""
+    private var searchKeyword = ""
+    private var visibleStationCount = STATION_PAGE_SIZE
 
     fun submitList(stations: List<StationUi>) {
         allStations = stations
+        if (stations.isEmpty()) visibleStationCount = STATION_PAGE_SIZE
         applyFilter()
+    }
+
+    fun updateStation(station: StationUi) {
+        allStations = allStations.map { if (it.key == station.key) station else it }
+        applyFilter()
+    }
+
+    fun stationAt(position: Int): StationUi? = shown.getOrNull(position)
+
+    fun loadMoreStations(): Boolean {
+        if (searchKeyword.isNotEmpty() || visibleStationCount >= allStations.size) return false
+        visibleStationCount = (visibleStationCount + STATION_PAGE_SIZE).coerceAtMost(allStations.size)
+        applyFilter()
+        return true
     }
 
     fun setSearchFilter(keyword: String) {
@@ -38,29 +67,26 @@ class BusHomeNearbyAdapter : RecyclerView.Adapter<BusHomeNearbyAdapter.StationVH
     }
 
     private fun applyFilter() {
-        val k = searchKeyword
-        shown = if (k.isEmpty()) {
+        val keyword = searchKeyword
+        val filtered = if (keyword.isEmpty()) {
             allStations
         } else {
-            allStations.mapNotNull { st ->
-                val buses = st.buses.filter { line ->
-                    line.id.contains(k, ignoreCase = true) ||
-                        line.direction.contains(k, ignoreCase = true)
-                }
-                when {
-                    st.name.contains(k, ignoreCase = true) || st.desc.contains(k, ignoreCase = true) -> st
-                    buses.isNotEmpty() -> st.copy(buses = buses)
-                    else -> null
-                }
+            allStations.filter { station ->
+                station.name.contains(keyword, ignoreCase = true) ||
+                    station.desc.contains(keyword, ignoreCase = true) ||
+                    station.buses.any { line ->
+                        line.id.contains(keyword, ignoreCase = true) ||
+                            line.direction.contains(keyword, ignoreCase = true)
+                    }
             }
         }
+        shown = if (keyword.isEmpty()) filtered.take(visibleStationCount) else filtered
         notifyDataSetChanged()
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StationVH {
-        val inf = LayoutInflater.from(parent.context)
-        return StationVH(ItemStationCardBinding.inflate(inf, parent, false))
-    }
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StationVH = StationVH(
+        ItemStationCardBinding.inflate(LayoutInflater.from(parent.context), parent, false),
+    )
 
     override fun getItemCount(): Int = shown.size
 
@@ -68,23 +94,30 @@ class BusHomeNearbyAdapter : RecyclerView.Adapter<BusHomeNearbyAdapter.StationVH
         holder.bind(shown[position])
     }
 
-    class StationVH(private val binding: ItemStationCardBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(st: StationUi) {
-            binding.stationName.text = st.name
-            binding.stationDesc.text = st.desc
-            binding.busLinesContainer.removeAllViews()
-            val inflater = LayoutInflater.from(binding.root.context)
-            for (line in st.buses) {
-                val row = ItemBusLineRowBinding.inflate(inflater, binding.busLinesContainer, true)
-                row.busLineId.text = line.id
-                row.busDirection.text =
-                    binding.root.context.getString(R.string.bus_towards_prefix) + line.direction
-                row.busStatus.text = line.statusMain
-                if (line.statusSub != null) {
-                    row.busStatusDetail.visibility = View.VISIBLE
-                    row.busStatusDetail.text = line.statusSub
+    inner class StationVH(private val binding: ItemStationCardBinding) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(station: StationUi) {
+            binding.stationName.text = station.name
+            binding.stationDesc.text = station.desc
+            binding.linePreview.text = previewText(station)
+            binding.root.setOnClickListener { onStationClick(station) }
+        }
+
+        private fun previewText(station: StationUi): String = when (station.linesState) {
+            StationLinesState.NOT_LOADED -> binding.root.context.getString(R.string.nearby_lines_tap_to_view)
+            StationLinesState.LOADING -> binding.root.context.getString(R.string.nearby_lines_loading)
+            StationLinesState.ERROR -> binding.root.context.getString(R.string.nearby_lines_tap_to_view)
+            StationLinesState.LOADED -> {
+                val names = station.buses.map { it.id }.filter { it.isNotBlank() }.distinct()
+                if (names.isEmpty()) {
+                    binding.root.context.getString(R.string.nearby_lines_empty)
                 } else {
-                    row.busStatusDetail.visibility = View.GONE
+                    val preview = names.take(PREVIEW_LINE_COUNT).joinToString(" · ")
+                    val remaining = names.size - PREVIEW_LINE_COUNT
+                    if (remaining > 0) {
+                        binding.root.context.getString(R.string.nearby_lines_preview_more, preview, remaining)
+                    } else {
+                        preview
+                    }
                 }
             }
         }

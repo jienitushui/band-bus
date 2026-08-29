@@ -15,31 +15,41 @@
       </div>
     </div>
 
-    <list if="{{!loading && stationList.length > 0}}" class="stations-list" bounces="false" style="height: {{stationListHeight}}px;">
+    <div if="{{realtimeText}}" class="eta-strip">
+      <image static src="/common/images/icon_bus.png" class="eta-icon" />
+      <text class="eta-text" style="lines:1;">{{getCompactEtaText()}}</text>
+    </div>
+
+    <list if="{{!loading && stationList.length > 0}}" class="stations-list" bounces="false" style="top: {{stationListTop}}px; height: {{stationListHeight}}px;">
       <list-item for="{{stationList}}" class="station-item" type="station">
         <div class="station-card {{getIsCurrentDot($item) ? 'station-card-current' : ''}}">
           <text class="station-order">{{getStationOrderText($item)}}</text>
+          <div class="station-track">
+            <div class="station-track-line station-track-line-top"></div>
+            <div class="station-track-line station-track-line-bottom"></div>
+            <div class="station-dot {{getIsCurrentDot($item) ? 'station-dot-current' : ''}}"></div>
+            <div if="{{hasBusAtStation($item)}}" class="bus-progress {{getBusMarkerClass($item)}}" @click="openVehicleDetail($item)">
+              <image static src="/common/images/icon_bus.png" class="bus-progress-icon" />
+            </div>
+          </div>
           <div class="station-main">
             <text class="station-name" style="lines:1;">{{$item.stationName || ''}}</text>
             <text class="station-sub" style="lines:1;">{{getStationSub($item)}}</text>
-          </div>
-          <div if="{{hasBusAtStation($item)}}" class="bus-marker" @click="openVehicleDetail($item)">
-            <image static src="/common/images/icon_bus.png" class="bus-marker-icon" />
           </div>
         </div>
       </list-item>
     </list>
 
-    <div if="{{!loading && stationList.length === 0}}" class="state-layer">
+    <div if="{{!loading && stationList.length === 0}}" class="state-layer" style="top: {{stationListTop}}px; height: {{stationListHeight}}px;">
       <image static src="/common/images/empty.png" class="empty-icon" />
       <text static class="state-text">暂无站点</text>
     </div>
 
-    <div if="{{loading}}" class="state-layer">
+    <div if="{{loading}}" class="state-layer" style="top: {{stationListTop}}px; height: {{stationListHeight}}px;">
       <text static class="state-text">加载中…</text>
     </div>
 
-    <div class="edge-back-zone" style="height: {{stationListHeight}}px;" @swipe="onEdgeBackSwipe"></div>
+    <div class="edge-back-zone" style="top: {{stationListTop}}px; height: {{stationListHeight}}px;" @swipe="onEdgeBackSwipe"></div>
   </div>
 </template>
 
@@ -52,6 +62,7 @@ import device from '@system.device'
 const DESIGN_WIDTH = 336;
 const DEFAULT_PAGE_HEIGHT = 336;
 const DETAIL_LIST_TOP = 94;
+const ETA_STRIP_HEIGHT = 36;
 const DEFAULT_CITY_NAME = '泉州市';
 const DEFAULT_CITY_KEY = 'qz595803';
 const API_URL = 'https://h5.mygolbs.com/ApiData.do';
@@ -73,6 +84,7 @@ export default {
     realtimeText: '',
     routeId: '',
     pageHeight: DEFAULT_PAGE_HEIGHT,
+    stationListTop: DETAIL_LIST_TOP,
     stationListHeight: DEFAULT_PAGE_HEIGHT - DETAIL_LIST_TOP,
     scheduleBeginTime: '',
     scheduleEndTime: '',
@@ -184,8 +196,18 @@ export default {
     return order ? String(order) : '';
   },
 
+  getCompactEtaText() {
+    const raw = String(this.realtimeText || '').trim();
+    return raw ? `${raw} 到站` : '';
+  },
+
   hasBusAtStation(item) {
     return !!this.getBusAtStation(item);
+  },
+
+  getBusMarkerClass(item) {
+    const bus = this.getBusAtStation(item);
+    return bus && this.isBusArrived(bus) ? 'bus-progress-arrived' : 'bus-progress-between';
   },
 
   openVehicleDetail(item) {
@@ -257,7 +279,14 @@ export default {
   applyLayout(height) {
     const safeHeight = Math.max(Math.min(Number(height) || DEFAULT_PAGE_HEIGHT, 520), 300);
     this.pageHeight = safeHeight;
-    this.stationListHeight = Math.max(safeHeight - DETAIL_LIST_TOP, 200);
+    this.updateStationListLayout();
+  },
+
+  updateStationListLayout() {
+    const hasEta = !!String(this.realtimeText || '').trim();
+    const top = hasEta ? DETAIL_LIST_TOP + ETA_STRIP_HEIGHT : DETAIL_LIST_TOP;
+    this.stationListTop = top;
+    this.stationListHeight = Math.max(this.pageHeight - top, 200);
   },
 
   normalizeLineName(name) {
@@ -276,6 +305,7 @@ export default {
     this.stationList = [];
     this.realtimeList = [];
     this.realtimeText = '';
+    this.updateStationListLayout();
     this.scheduleBeginTime = '';
     this.scheduleEndTime = '';
     this.schedulePlan103 = '';
@@ -349,17 +379,16 @@ export default {
         const tips = eta.busToStationTips || '';
         this.realtimeText = time || tips ? `${tips} ${time}`.trim() : '';
         this.scheduleRealtimeEta = this.realtimeText || '';
-        if (this.realtimeText) {
-          this.firstLastText = this.realtimeText;
-        }
       } else {
         this.scheduleRealtimeEta = '';
         if (!this.realtimeList.length && plan104Raw) {
           this.firstLastText = `预计 ${plan104Raw} 发车`;
         }
       }
+      this.updateStationListLayout();
     } catch (e) {
       this.realtimeList = [];
+      this.updateStationListLayout();
     }
   },
 
@@ -556,6 +585,35 @@ export default {
   background-color: #121921;
 }
 
+.eta-strip {
+  position: absolute;
+  left: 0px;
+  top: 94px;
+  width: 336px;
+  height: 36px;
+  padding: 0px 20px;
+  background-color: rgba(5,150,105,0.14);
+  border-bottom: 2px solid rgba(52,211,153,0.18);
+  flex-direction: row;
+  align-items: center;
+}
+
+.eta-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.eta-text {
+  margin-left: 8px;
+  width: 260px;
+  line-height: 30px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #6ee7b7;
+  text-overflow: ellipsis;
+}
+
 .station-item {
   width: 296px;
   height: 82px;
@@ -569,37 +627,37 @@ export default {
   border-radius: 22px;
   border: 2px solid rgba(255,255,255,0.05);
   background-color: rgba(255,255,255,0.06);
-  padding: 14px 16px;
+  padding: 14px 14px;
   flex-direction: row;
   align-items: center;
 }
 
 .station-card-current {
-  border-color: rgba(52,211,153,0.42);
-  background-color: rgba(52,211,153,0.12);
+  border-color: rgba(96,165,250,0.56);
+  background-color: rgba(37,99,235,0.14);
 }
 
 .station-order {
-  width: 42px;
-  height: 42px;
-  border-radius: 21px;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
   background-color: rgba(255,255,255,0.10);
-  line-height: 42px;
-  font-size: 22px;
+  line-height: 32px;
+  font-size: 18px;
   font-weight: bold;
   color: #ffffff;
   text-align: center;
 }
 
 .station-main {
-  margin-left: 14px;
-  width: 136px;
+  margin-left: 10px;
+  width: 168px;
   height: 50px;
   flex-direction: column;
 }
 
 .station-name {
-  width: 136px;
+  width: 168px;
   line-height: 30px;
   font-size: 24px;
   font-weight: bold;
@@ -608,7 +666,7 @@ export default {
 }
 
 .station-sub {
-  width: 136px;
+  width: 168px;
   line-height: 20px;
   font-size: 17px;
   font-weight: bold;
@@ -616,21 +674,56 @@ export default {
   text-overflow: ellipsis;
 }
 
-.bus-marker {
+.station-track {
   margin-left: 8px;
-  width: 48px;
-  height: 48px;
-  border-radius: 24px;
-  background-color: rgba(251,146,60,0.18);
+  width: 22px;
+  height: 54px;
+  position: relative;
   justify-content: center;
   align-items: center;
 }
 
-.bus-marker-icon {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
+.station-track-line {
+  position: absolute;
+  left: 10px;
+  width: 2px;
+  background-color: rgba(148,163,184,0.58);
 }
+
+.station-track-line-top { top: 0px; height: 21px; }
+.station-track-line-bottom { bottom: 0px; height: 21px; }
+
+.station-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  background-color: #94a3b8;
+}
+
+.station-dot-current {
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  border: 3px solid rgba(191,219,254,0.96);
+  background-color: #2563eb;
+}
+
+.bus-progress {
+  position: absolute;
+  left: 1px;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background-color: #34d399;
+  justify-content: center;
+  align-items: center;
+  z-index: 3;
+}
+
+.bus-progress-between { bottom: 0px; }
+.bus-progress-arrived { top: 17px; }
+
+.bus-progress-icon { width: 14px; height: 14px; object-fit: contain; }
 
 .state-layer {
   position: absolute;

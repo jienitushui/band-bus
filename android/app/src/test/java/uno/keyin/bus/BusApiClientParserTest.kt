@@ -156,4 +156,26 @@ class BusApiClientParserTest {
         assertEquals("20:00", detail.lastTime)
         assertTrue(detail.comment.isEmpty())
     }
+
+    @Test
+    fun parseLineRealtime_mapsVehicleMarkersAndEta() {
+        val json = JSONObject(
+            """{
+                "status":1,"planTime":"13:45",
+                "list":[
+                    {"index":4,"statusType":"2","busNumber":"闽C02767D"},
+                    {"index":8,"statusType":"0","busNumber":"闽C02790D"}
+                ],
+                "routeOnStationRTimeInfoList":[{"busToStationTips":"5站","busToStationTimeTips":"5分钟"}]
+            }""",
+        )
+
+        val realtime = BusApiClient.parseLineRealtime(json)
+
+        assertEquals("5站 · 5分钟", realtime.etaText)
+        assertEquals("13:45", realtime.planTime)
+        assertEquals(listOf(4, 9), realtime.vehicles.map { it.stationOrder })
+        assertTrue(!realtime.vehicles[0].arrived)
+        assertTrue(realtime.vehicles[1].arrived)
+    }
 }

@@ -63,6 +63,9 @@
       "pages/stations": {
         "component": "stations"
       },
+      "pages/stationLines": {
+        "component": "stationLines"
+      },
       "pages/busDetail": {
         "component": "busDetail"
       },

@@ -47,6 +47,10 @@
     <string name="nav_profile">我的</string>
     <string name="action_sync_watch_short">同步手表</string>
     <string name="bus_towards_prefix">开往 </string>
+    <string name="nearby_lines_loading">正在加载线路…</string>
+    <string name="nearby_lines_empty">该站暂无线路</string>
+    <string name="nearby_lines_tap_to_view">点击查看经过线路</string>
+    <string name="nearby_lines_preview_more">%1$s · 还有 %2$d 条</string>
     <string name="placeholder_route_plan">路线规划功能开发中。\n\n当前版本可在「首页」查看附近站点演示数据；接入服务端后将显示换乘方案。</string>
     <string name="placeholder_favorites">收藏线路将显示在这里。\n\n在「首页」点击线路即可收藏（即将上线）。</string>
     <string name="placeholder_profile">登录与会员功能开发中。\n\n手表中继、互联自检与调试日志：点首页右上角「齿轮」进入设置。</string>

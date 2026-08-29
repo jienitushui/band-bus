@@ -3,8 +3,11 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="104dp"
     android:layout_marginBottom="12dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground"
     app:cardCornerRadius="12dp"
     app:cardElevation="2dp"
     app:strokeColor="#E5E7EB"
@@ -12,16 +15,15 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="12dp">
+            android:paddingHorizontal="16dp">
 
             <ImageView
                 android:layout_width="20dp"
@@ -36,6 +38,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
                 android:textColor="#111827"
                 android:textSize="18sp"
                 android:textStyle="bold"
@@ -49,6 +53,15 @@
                 android:textColor="#9CA3AF"
                 android:textSize="11sp"
                 tools:text="约 320m" />
+
+            <TextView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="›"
+                android:textColor="#6B7280"
+                android:textSize="24sp" />
         </LinearLayout>
 
         <View
@@ -56,11 +69,16 @@
             android:layout_height="1dp"
             android:background="#F3F4F6" />
 
-        <LinearLayout
-            android:id="@+id/busLinesContainer"
+        <TextView
+            android:id="@+id/linePreview"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingBottom="4dp" />
+            android:layout_height="47dp"
+            android:ellipsize="end"
+            android:gravity="center_vertical"
+            android:maxLines="1"
+            android:paddingHorizontal="16dp"
+            android:textColor="#6B7280"
+            android:textSize="13sp"
+            tools:text="K1路 · 21路 · 25路 · 还有 8 条" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

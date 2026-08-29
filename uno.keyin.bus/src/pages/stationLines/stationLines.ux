@@ -1,0 +1,216 @@
+<template>
+  <div class="page" style="height: {{pageHeight}}px;">
+    <div class="nav">
+      <div class="back-btn" @click="back">
+        <image static src="/common/images/icon_back1.png" class="back-icon" />
+      </div>
+      <div class="title-wrap">
+        <text class="title" style="lines:1;">{{stationName || '站点线路'}}</text>
+        <text class="subtitle">{{getCountText()}}</text>
+      </div>
+    </div>
+
+    <list if="{{!loading && visibleLines.length > 0}}" class="line-list" bounces="false" style="height: {{listHeight}}px;" onscrollbottom="loadMoreLines">
+      <list-item for="{{visibleLines}}" type="line" class="line-item">
+        <div class="line-card" @click="openRoute($item)">
+          <div class="line-main">
+            <text class="line-name" style="lines:1;">{{getLineName($item)}}</text>
+            <text class="line-dest" style="lines:1;">开往 {{getDestination($item)}}</text>
+          </div>
+          <text class="line-status" style="lines:2;">{{getStatus($item)}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <div if="{{loading}}" class="state-layer">
+      <text static class="state-text">正在加载线路…</text>
+    </div>
+    <div if="{{!loading && errorText}}" class="state-layer" @click="loadLines">
+      <text class="state-text">{{errorText}}</text>
+      <text static class="retry-text">点击重试</text>
+    </div>
+    <div if="{{!loading && !errorText && visibleLines.length === 0}}" class="state-layer">
+      <image static src="/common/images/empty.png" class="empty-icon" />
+      <text static class="state-text">该站暂无线路</text>
+    </div>
+
+    <div class="edge-back-zone" style="height: {{listHeight}}px;" @swipe="onEdgeBackSwipe"></div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import fetch from '@system.fetch';
+import device from '@system.device';
+
+const API_URL = 'https://h5.mygolbs.com/ApiData.do';
+const DEFAULT_PAGE_HEIGHT = 336;
+const DESIGN_WIDTH = 336;
+const LIST_TOP = 82;
+const PAGE_SIZE = 4;
+
+export default {
+  protected: {
+    stationName: '',
+    stationLat: '',
+    stationLon: '',
+    cityName: '',
+    cityKey: ''
+  },
+  private: {
+    pageHeight: DEFAULT_PAGE_HEIGHT,
+    listHeight: DEFAULT_PAGE_HEIGHT - LIST_TOP,
+    loading: false,
+    errorText: '',
+    allLines: [],
+    visibleLines: [],
+    visibleCount: PAGE_SIZE
+  },
+
+  onInit() {
+    this.initLayout();
+    this.loadLines();
+  },
+
+  onDestroy() {
+    this.allLines = null;
+    this.visibleLines = null;
+  },
+
+  initLayout() {
+    if (!device || typeof device.getInfo !== 'function') return;
+    device.getInfo({
+      success: (info) => {
+        const width = Number(info && info.screenWidth) || DESIGN_WIDTH;
+        const height = Number(info && info.screenHeight) || DEFAULT_PAGE_HEIGHT;
+        const scaled = Math.max(Math.min(Math.floor(height * DESIGN_WIDTH / width), 520), 300);
+        this.pageHeight = scaled;
+        this.listHeight = Math.max(scaled - LIST_TOP, 200);
+      }
+    });
+  },
+
+  async loadLines() {
+    if (this.loading) return;
+    this.loading = true;
+    this.errorText = '';
+    try {
+      const payload = await this.apiPost({
+        CMD: '115',
+        CITYNAME: this.cityName,
+        CITYKEY: this.cityKey,
+        STATIONNAME: this.stationName,
+        MYLAT: this.stationLat,
+        MYLNG: this.stationLon,
+        ALL: '1'
+      });
+      const list = payload && Array.isArray(payload.data) ? payload.data : [];
+      this.allLines = list;
+      this.visibleCount = Math.min(PAGE_SIZE, list.length);
+      this.visibleLines = list.slice(0, this.visibleCount);
+    } catch (e) {
+      this.allLines = [];
+      this.visibleLines = [];
+      this.errorText = '线路加载失败';
+    } finally {
+      this.loading = false;
+    }
+  },
+
+  loadMoreLines() {
+    if (this.visibleCount >= this.allLines.length) return;
+    this.visibleCount = Math.min(this.visibleCount + PAGE_SIZE, this.allLines.length);
+    this.visibleLines = this.allLines.slice(0, this.visibleCount);
+  },
+
+  getCountText() {
+    if (this.loading) return '加载中';
+    if (!this.allLines || !this.allLines.length) return '';
+    return `共 ${this.allLines.length} 条`;
+  },
+
+  getLineName(item) {
+    const raw = item && (item.lineName || item.route || item.linename || item.routeName);
+    const name = String(raw || '--');
+    return name.indexOf('路') >= 0 ? name : `${name}路`;
+  },
+
+  getDestination(item) {
+    if (!item) return '未知方向';
+    return item.to || item.routeNameUp || item.routeNameDown || item.endStationName || '未知方向';
+  },
+
+  getStatus(item) {
+    if (!item) return '暂无预报';
+    return item.neartext || (item.neartime ? `${item.neartime}分钟` : '') || item.neardis || '暂无预报';
+  },
+
+  openRoute(item) {
+    if (!item) return;
+    const raw = item.lineName || item.route || item.linename || item.routeName || '';
+    if (!raw) return;
+    router.push({
+      uri: '/pages/busDetail',
+      params: {
+        linename: String(raw),
+        direction: String(item.upperOrDown != null ? item.upperOrDown : 1),
+        stationorder: String(item.stationOrder != null ? item.stationOrder : 0),
+        cityName: this.cityName,
+        cityKey: this.cityKey
+      }
+    });
+  },
+
+  apiPost(params) {
+    const body = Object.keys(params).map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key] == null ? '' : params[key])}`).join('&');
+    return new Promise((resolve, reject) => {
+      fetch.fetch({
+        url: API_URL,
+        method: 'POST',
+        header: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json, text/javascript, */*; q=0.01',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': this.cityKey ? `https://h5.mygolbs.com/?areacode=${encodeURIComponent(this.cityKey)}` : 'https://h5.mygolbs.com/',
+          'Origin': 'https://h5.mygolbs.com'
+        },
+        data: body,
+        responseType: 'json',
+        success: (response) => resolve(response.data ? response.data : response),
+        fail: reject
+      });
+    });
+  },
+
+  back() {
+    router.back();
+  },
+
+  onEdgeBackSwipe(e) {
+    if (e && e.direction === 'right') this.back();
+  }
+}
+</script>
+
+<style>
+.page { position: absolute; left: 0px; top: 0px; width: 336px; height: 336px; background-color: #121921; overflow: hidden; }
+.nav { position: absolute; left: 0px; top: 0px; width: 336px; height: 82px; background-color: rgba(18,25,33,0.96); border-bottom: 2px solid rgba(255,255,255,0.05); }
+.back-btn { position: absolute; left: 28px; top: 14px; width: 54px; height: 54px; border-radius: 27px; background-color: rgba(255,255,255,0.10); justify-content: center; align-items: center; }
+.back-icon { width: 34px; height: 34px; object-fit: contain; }
+.title-wrap { position: absolute; left: 88px; top: 10px; width: 220px; height: 64px; flex-direction: column; align-items: center; }
+.title { width: 210px; line-height: 38px; font-size: 26px; font-weight: bold; color: #ffffff; text-align: center; text-overflow: ellipsis; }
+.subtitle { width: 210px; line-height: 22px; font-size: 16px; color: #9ca3af; text-align: center; }
+.line-list { position: absolute; left: 0px; top: 82px; width: 336px; height: 254px; padding: 12px 20px 26px 20px; background-color: #121921; }
+.line-item { width: 296px; height: 94px; margin-bottom: 12px; }
+.line-card { width: 296px; height: 94px; border-radius: 22px; border: 2px solid rgba(255,255,255,0.05); background-color: rgba(255,255,255,0.06); padding: 14px 16px; flex-direction: row; align-items: center; }
+.line-main { width: 180px; height: 64px; flex-direction: column; }
+.line-name { width: 180px; line-height: 36px; font-size: 27px; font-weight: bold; color: #ffffff; text-overflow: ellipsis; }
+.line-dest { width: 180px; line-height: 26px; font-size: 17px; color: #9ca3af; text-overflow: ellipsis; }
+.line-status { margin-left: 8px; width: 72px; line-height: 26px; font-size: 17px; font-weight: bold; color: #34d399; text-align: right; }
+.state-layer { position: absolute; left: 0px; top: 82px; width: 336px; height: 254px; flex-direction: column; justify-content: center; align-items: center; }
+.empty-icon { width: 92px; height: 92px; }
+.state-text { margin-top: 10px; width: 280px; line-height: 38px; font-size: 26px; font-weight: bold; color: rgba(255,255,255,0.78); text-align: center; }
+.retry-text { margin-top: 8px; width: 180px; line-height: 30px; font-size: 19px; color: #fb923c; text-align: center; }
+.edge-back-zone { position: absolute; left: 0px; top: 82px; width: 24px; height: 254px; background-color: rgba(0,0,0,0.01); }
+</style>

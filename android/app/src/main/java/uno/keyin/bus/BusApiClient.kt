@@ -288,15 +288,17 @@ object BusApiClient {
         check(nearby.optInt("status") == 1) { nearby.optString("msg", "附近站点加载失败") }
         val rows = nearby.optJSONArray("data") ?: return emptyList()
         val stations = ArrayList<StationUi>()
-        for (i in 0 until minOf(rows.length(), 6)) {
+        for (i in 0 until rows.length()) {
             val item = rows.optJSONObject(i) ?: continue
             val name = item.optString("name").trim()
             if (name.isEmpty()) continue
-            val lines = runCatching {
-                loadStationLines(city, name, item.optString("lat"), item.optString("lon"))
-            }.getOrDefault(emptyList())
             val distance = item.optDouble("dis", 0.0).toInt().coerceAtLeast(0)
-            stations += StationUi(name, "约 ${distance}m", lines)
+            stations += StationUi(
+                name = name,
+                desc = "约 ${distance}m",
+                lat = item.optString("lat"),
+                lng = item.optString("lon"),
+            )
         }
         return stations
     }
@@ -321,7 +323,7 @@ object BusApiClient {
         if (json.optInt("status") != 1) return emptyList()
         val data = json.optJSONArray("data") ?: return emptyList()
         return buildList {
-            for (i in 0 until minOf(data.length(), 8)) {
+            for (i in 0 until data.length()) {
                 val item = data.optJSONObject(i) ?: continue
                 val lineName = item.optString("lineName").ifBlank { "--" }
                 val destination = item.optString("to").ifBlank {
@@ -343,6 +345,7 @@ object BusApiClient {
                         statusMain = status,
                         statusSub = nearDistance.takeIf { it.isNotEmpty() && it != status },
                         directionCode = item.optString("upperOrDown", "1"),
+                        stationOrder = item.optInt("stationOrder", 0),
                     ),
                 )
             }
@@ -356,6 +359,62 @@ object BusApiClient {
         ))
         check(json.optInt("status") == 1) { json.optString("msg", "线路详情加载失败") }
         return parseLineDetail(json, lineName, direction)
+    }
+
+    fun loadLineRealtime(
+        city: CityConfig,
+        lineName: String,
+        direction: String,
+        stationOrder: Int,
+    ): LineRealtime {
+        val json = post(
+            mapOf(
+                "CMD" to "104",
+                "CITYNAME" to city.cityName,
+                "CITYKEY" to city.cityKey,
+                "LINENAME" to lineName,
+                "DIRECTION" to direction,
+                "STATIONORDER" to stationOrder.coerceAtLeast(0).toString(),
+            ),
+        )
+        return parseLineRealtime(json)
+    }
+
+    internal fun parseLineRealtime(json: JSONObject): LineRealtime {
+        if (json.optInt("status") != 1) return LineRealtime()
+        val vehicles = buildList {
+            val rows = json.optJSONArray("list") ?: return@buildList
+            for (i in 0 until rows.length()) {
+                val row = rows.optJSONObject(i) ?: continue
+                val targetOrder = row.optInt("index", -1) + 1
+                if (targetOrder <= 0) continue
+                val arrived = row.optString("statusType") == "0"
+                val markerOrder = if (arrived) targetOrder else targetOrder - 1
+                if (markerOrder > 0) {
+                    add(
+                        LineVehicle(
+                            stationOrder = markerOrder,
+                            busNumber = row.optString("busNumber").trim(),
+                            arrived = arrived,
+                        ),
+                    )
+                }
+            }
+        }
+        val eta = json.optJSONArray("routeOnStationRTimeInfoList")?.optJSONObject(0)
+        val etaText = eta?.let {
+            listOf(
+                it.optString("busToStationTips").trim(),
+                it.optString("busToStationTimeTips").trim().ifBlank {
+                    it.optInt("busToStationTime", -1).takeIf { value -> value >= 0 }?.let { value -> "$value 分钟" }.orEmpty()
+                },
+            ).filter { value -> value.isNotBlank() }.joinToString(" · ")
+        }.orEmpty()
+        return LineRealtime(
+            vehicles = vehicles,
+            etaText = etaText,
+            planTime = json.optString("planTime").trim(),
+        )
     }
 
     internal fun parseLineDetail(json: JSONObject, lineName: String, direction: String): LineDetail {

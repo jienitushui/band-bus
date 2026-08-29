@@ -21,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import org.json.JSONObject
 import org.json.JSONArray
@@ -36,7 +37,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityMainBinding
-    private val homeAdapter = BusHomeNearbyAdapter()
+    private val homeAdapter = BusHomeNearbyAdapter(::openNearbyStation)
     private val searchAdapter = BusSearchAdapter(::onSearchResultClicked)
     private val routeAdapter = TransferAdapter(::syncRoutePlan)
     private lateinit var routeSuggestionAdapter: TransferStationAdapter
@@ -104,6 +105,15 @@ class MainActivity : AppCompatActivity() {
 
         binding.recyclerHomeStations.layoutManager = LinearLayoutManager(this)
         binding.recyclerHomeStations.adapter = homeAdapter
+        binding.recyclerHomeStations.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                if (dy > 0 && !recyclerView.canScrollVertically(1)) {
+                    homeAdapter.loadMoreStations()
+                }
+                requestVisibleStationPreviews()
+            }
+        })
+        binding.recyclerHomeStations.post { requestVisibleStationPreviews() }
         binding.recyclerSearchResults.layoutManager = LinearLayoutManager(this)
         binding.recyclerSearchResults.adapter = searchAdapter
         setupTransferPanel()
@@ -489,10 +499,54 @@ class MainActivity : AppCompatActivity() {
         if (homeSubTab != HomeSubTab.Nearby) return
         if (hasNearbySnapshot) {
             homeAdapter.submitList(nearbyStations)
+            binding.recyclerHomeStations.post { requestVisibleStationPreviews() }
             showHomeState(nearbyStateText)
         } else if (PhoneLocationHelper.hasLocationPermission(this)) {
             loadNearbyForCity(CityConfigStore.get(this))
         }
+    }
+
+    private fun loadNearbyStationLines(station: StationUi) {
+        if (station.linesState == StationLinesState.LOADING || station.linesState == StationLinesState.LOADED) return
+        val city = CityConfigStore.get(this)
+        val generation = homeLoadGeneration
+        updateNearbyStation(station.copy(linesState = StationLinesState.LOADING))
+        StationLinesRepository.load(city, station.name, station.lat, station.lng) { result ->
+            mainHandler.post {
+                if (generation != homeLoadGeneration || CityConfigStore.get(this).version != city.version) {
+                    return@post
+                }
+                result.onSuccess { lines ->
+                    updateNearbyStation(station.copy(buses = lines, linesState = StationLinesState.LOADED))
+                }.onFailure {
+                    updateNearbyStation(station.copy(linesState = StationLinesState.ERROR))
+                }
+            }
+        }
+    }
+
+    private fun requestVisibleStationPreviews() {
+        if (homeSubTab != HomeSubTab.Nearby || binding.recyclerHomeStations.visibility != View.VISIBLE) return
+        val manager = binding.recyclerHomeStations.layoutManager as? LinearLayoutManager ?: return
+        val first = manager.findFirstVisibleItemPosition()
+        val last = manager.findLastVisibleItemPosition()
+        if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) return
+        for (position in first..last) {
+            homeAdapter.stationAt(position)?.let(::loadNearbyStationLines)
+        }
+    }
+
+    private fun updateNearbyStation(station: StationUi) {
+        nearbyStations = nearbyStations.map { if (it.key == station.key) station else it }
+        homeAdapter.updateStation(station)
+    }
+
+    private fun openNearbyStation(station: StationUi) {
+        startActivity(Intent(this, StationDetailActivity::class.java).apply {
+            putExtra(StationDetailActivity.EXTRA_STATION_NAME, station.name)
+            putExtra(StationDetailActivity.EXTRA_STATION_LAT, station.lat)
+            putExtra(StationDetailActivity.EXTRA_STATION_LNG, station.lng)
+        })
     }
 
     private fun onSearchResultClicked(item: SearchResult) {
@@ -643,6 +697,7 @@ class MainActivity : AppCompatActivity() {
                         nearbyStateText = if (stations.isEmpty()) getString(R.string.home_nearby_empty) else null
                         hasNearbySnapshot = true
                         homeAdapter.submitList(stations)
+                        binding.recyclerHomeStations.post { requestVisibleStationPreviews() }
                         showHomeState(nearbyStateText)
                     }.onFailure {
                         nearbyStations = emptyList()
