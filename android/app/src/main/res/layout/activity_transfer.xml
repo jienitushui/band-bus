@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#F7F8FA" android:orientation="vertical">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:background="@android:color/white" android:gravity="center_vertical" android:paddingHorizontal="8dp">
+        <ImageButton android:id="@+id/btnBack" android:layout_width="48dp" android:layout_height="48dp" android:background="?attr/selectableItemBackgroundBorderless" android:contentDescription="@string/action_back" android:src="@android:drawable/ic_media_previous" android:tint="#374151" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/title_transfer" android:textColor="#111827" android:textSize="20sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@android:color/white" android:orientation="vertical" android:padding="16dp">
+        <com.google.android.material.textfield.TextInputLayout style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/transfer_start_hint"><com.google.android.material.textfield.TextInputEditText android:id="@+id/inputStart" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text" android:maxLines="1" /></com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.textfield.TextInputLayout style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="@string/transfer_end_hint"><com.google.android.material.textfield.TextInputEditText android:id="@+id/inputEnd" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text" android:maxLines="1" /></com.google.android.material.textfield.TextInputLayout>
+        <androidx.recyclerview.widget.RecyclerView android:id="@+id/stationSuggestions" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxHeight="240dp" android:visibility="gone" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/btnSearchTransfer" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="@string/action_search_transfer" />
+    </LinearLayout>
+    <TextView android:id="@+id/transferState" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="16dp" android:textColor="#6B7280" android:textSize="14sp" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/schemeList" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:padding="16dp" />
+</LinearLayout>

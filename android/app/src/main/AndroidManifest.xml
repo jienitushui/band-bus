@@ -42,6 +42,16 @@
             android:exported="false"
             android:label="@string/title_city_selection" />
 
+        <activity
+            android:name=".LineDetailActivity"
+            android:exported="false"
+            android:label="@string/title_line_detail" />
+        <activity
+            android:name=".StationDetailActivity"
+            android:exported="false"
+            android:label="@string/title_station_detail" />
+        <activity android:name=".TransferActivity" android:exported="false" android:label="@string/title_transfer" />
+
         <service
             android:name=".LocationRelayService"
             android:exported="false"

@@ -383,6 +383,28 @@ export default {
             this.applyCityConfig(o, true);
             return;
           }
+          if (o && o.type === 'transfer_plan') {
+            const serializedPlan = JSON.stringify(o);
+            storage.set({
+              key: 'BUS_TRANSFER_PLAN',
+              value: serializedPlan,
+              success: () => {
+                router.push({
+                  uri: '/pages/transferPlan',
+                  params: {
+                    cityName: String(o.cityName || ''),
+                    startStation: String(o.startStation || ''),
+                    endStation: String(o.endStation || ''),
+                    totalTime: String(o.totalTime || ''),
+                    walkDistance: String(o.walkDistance || ''),
+                    summary: String(o.summary || '')
+                  }
+                });
+              },
+              fail: () => prompt.showToast({ message: '换乘方案保存失败', duration: 1800 })
+            });
+            return;
+          }
           if (o && o.type === 'relay_heartbeat') {
             if (o.cityName) {
               this.applyCityConfig({

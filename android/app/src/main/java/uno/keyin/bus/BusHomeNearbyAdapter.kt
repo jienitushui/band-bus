@@ -12,6 +12,7 @@ data class BusLineUi(
     val direction: String,
     val statusMain: String,
     val statusSub: String? = null,
+    val directionCode: String = "1",
 )
 
 data class StationUi(

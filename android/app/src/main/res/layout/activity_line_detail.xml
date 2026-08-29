@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="#F7F8FA" android:orientation="vertical">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+        android:background="@android:color/white" android:gravity="center_vertical" android:paddingHorizontal="8dp">
+        <ImageButton android:id="@+id/btnBack" android:layout_width="48dp" android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless" android:contentDescription="@string/action_back"
+            android:src="@android:drawable/ic_media_previous" android:tint="#374151" />
+        <TextView android:id="@+id/lineTitle" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:textColor="#111827" android:textSize="20sp" android:textStyle="bold" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/btnDirection"
+            style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="@string/action_switch_direction" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@android:color/white" android:orientation="vertical" android:padding="16dp">
+        <TextView android:id="@+id/lineDirection" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#374151" android:textSize="16sp" />
+        <TextView android:id="@+id/lineSchedule" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textColor="#6B7280" android:textSize="14sp" />
+        <TextView android:id="@+id/lineComment" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textColor="#6B7280" android:textSize="13sp" />
+    </LinearLayout>
+    <TextView android:id="@+id/loading" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center" android:text="@string/line_detail_loading" android:textColor="#6B7280" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/stationList" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:padding="16dp" android:visibility="gone" />
+</LinearLayout>

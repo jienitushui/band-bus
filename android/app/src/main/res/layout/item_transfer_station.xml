@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/stationName"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginVertical="3dp"
+    android:background="@drawable/bg_transfer_station_suggestion"
+    android:gravity="center_vertical"
+    android:minHeight="50dp"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="10dp"
+    android:textColor="#111827"
+    android:textSize="15sp" />

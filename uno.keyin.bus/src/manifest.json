@@ -1,8 +1,8 @@
 {
   "package": "uno.keyin.bus",
   "name": "腕上公交",
-  "versionName": "V26.2.1.BAND",
-  "versionCode": 260302,
+  "versionName": "V26.2.7.BAND",
+  "versionCode": 260308,
   "minPlatformVersion": 1100,
   "icon": "/common/logo.png",
   "simulationVersion": "default",
@@ -71,6 +71,9 @@
       },
       "pages/vehicleDetail": {
         "component": "vehicleDetail"
+      },
+      "pages/transferPlan": {
+        "component": "transferPlan"
       }
     }
   },

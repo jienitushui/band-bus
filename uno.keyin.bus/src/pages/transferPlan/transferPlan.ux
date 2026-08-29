@@ -1,0 +1,229 @@
+<template>
+  <div class="page">
+    <div class="nav">
+      <div class="back" @click="back"><image static src="/common/images/icon_back1.png" class="back-icon" /></div>
+      <text static class="title">换乘方案</text>
+      <div class="placeholder"></div>
+    </div>
+
+    <list class="plan-list" bounces="false">
+      <list-item type="overview" class="overview-item">
+        <text class="city" style="lines:1;">{{cityName || '公交换乘'}}</text>
+        <div class="metrics">
+          <div class="metric"><text class="metric-value" style="lines:1;">{{totalTime || '--'}}</text><text static class="metric-label">总耗时</text></div>
+          <div class="metric"><text class="metric-value walk-value" style="lines:1;">{{walkDistance || '--'}}</text><text static class="metric-label">步行</text></div>
+        </div>
+      </list-item>
+
+      <list-item type="origin" class="station-item">
+        <div class="station-dot start-dot"></div>
+        <div class="station-copy">
+          <text static class="station-label">出发</text>
+          <text class="station-name" style="lines:2;">{{startStation || '我的位置'}}</text>
+          <text class="station-note" style="lines:2;">{{getStartText()}}</text>
+        </div>
+      </list-item>
+
+      <list-item for="{{routeSteps}}" type="route" class="route-item">
+        <div class="route-card">
+          <image static src="/common/images/icon_bus.png" class="bus-icon" />
+          <div class="route-copy">
+            <text class="route-line" style="lines:2;">{{$item.line}}</text>
+            <text class="route-stations" style="lines:2;">{{$item.stations}}</text>
+            <text class="route-note" style="lines:2;">{{$item.detail}}</text>
+            <text if="{{$item.transfer}}" class="transfer-note" style="lines:2;">{{$item.transfer}}</text>
+          </div>
+        </div>
+      </list-item>
+
+      <list-item if="{{routeSteps.length === 0}}" type="fallback" class="fallback-item">
+        <text class="fallback-text" style="lines:-1;">{{summary || '暂未收到线路内容'}}</text>
+      </list-item>
+
+      <list-item type="destination" class="station-item destination-item">
+        <div class="station-dot end-dot"></div>
+        <div class="station-copy">
+          <text static class="station-label">到达</text>
+          <text class="station-name" style="lines:2;">{{endStation || '目的地'}}</text>
+          <text class="station-note" style="lines:2;">{{getEndText()}}</text>
+        </div>
+      </list-item>
+    </list>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import storage from '@system.storage';
+
+export default {
+  protected: {
+    cityName: '',
+    startStation: '',
+    endStation: '',
+    boardingStation: '',
+    alightingStation: '',
+    startLine: '',
+    changeStation: '',
+    endLine: '',
+    totalTime: '',
+    walkDistance: '',
+    legs: '',
+    startWalkDistance: '',
+    endWalkDistance: '',
+    totalDistance: '',
+    lineSegments: '',
+    summary: '',
+    displaySummary: ''
+  },
+  private: {
+    routeSteps: []
+  },
+  onInit() {
+    this.applyDirectPlan();
+    this.loadCachedPlan();
+  },
+  applyDirectPlan() {
+    const legs = this.parseJsonArray(this.legs);
+    if (legs.length) {
+      this.routeSteps = legs.map((leg, index) => this.buildLegStep(leg, index, legs));
+      return true;
+    }
+    const segments = this.parseStringArray(this.lineSegments);
+    if (!segments.length && this.startLine) segments.push(String(this.startLine));
+    this.routeSteps = segments.map((line) => ({ line, stations: '站点信息暂缺', detail: '', transfer: '' }));
+    return !!(this.routeSteps.length || this.summary || this.startStation || this.endStation);
+  },
+  parseJsonArray(value) {
+    if (Array.isArray(value)) return value;
+    const raw = String(value || '').trim();
+    if (!raw) return [];
+    try {
+      const decoded = decodeURIComponent(raw);
+      const list = JSON.parse(decoded);
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  },
+  parseStringArray(value) {
+    return this.parseJsonArray(value).map((item) => String(item || '')).filter((item) => item);
+  },
+  buildLegStep(leg, index, legs) {
+    const options = leg && Array.isArray(leg.options) ? leg.options : [];
+    const names = options.map((option) => String(option.lineName || '')).filter((name) => name);
+    const board = String((leg && leg.boardStation) || (options[0] && options[0].boardStation) || '上车站信息暂缺');
+    const alight = String((leg && leg.alightStation) || (options[0] && options[0].alightStation) || '下车站信息暂缺');
+    const details = options.map((option) => {
+      const parts = [];
+      if (option.stationCount !== null && option.stationCount !== undefined && option.stationCount !== '') parts.push(`${option.stationCount}站`);
+      if (option.direction) parts.push(`开往${option.direction}`);
+      return parts.join(' · ');
+    }).filter((text) => text);
+    let transfer = '';
+    if (index < legs.length - 1) {
+      const next = legs[index + 1] || {};
+      const nextOptions = Array.isArray(next.options) ? next.options : [];
+      const nextBoard = String(next.boardStation || (nextOptions[0] && nextOptions[0].boardStation) || '');
+      const walk = String((leg && leg.walkAfterDistance) || '');
+      if (alight && nextBoard && alight === nextBoard && !walk) {
+        transfer = '同站换乘';
+      } else if (walk) {
+        transfer = nextBoard ? `下车 · 步行${walk}前往${nextBoard}` : `下车 · 步行${walk}换乘`;
+      } else {
+        transfer = '换乘站信息暂缺';
+      }
+    }
+    return {
+      line: names.join(' / ') || '线路信息暂缺',
+      stations: `${board} → ${alight}`,
+      detail: details.join('；'),
+      transfer
+    };
+  },
+  getStartText() {
+    const walk = this.startWalkDistance ? `步行${this.startWalkDistance} · ` : '';
+    const station = this.routeSteps.length ? String(this.routeSteps[0].stations || '').split(' → ')[0] : this.boardingStation;
+    return station ? `${walk}前往${station}上车` : `${walk}前往公交站上车`;
+  },
+  getEndText() {
+    const walk = this.endWalkDistance ? `步行${this.endWalkDistance}到达` : '下车后前往终点';
+    return walk;
+  },
+  loadCachedPlan() {
+    storage.get({
+      key: 'BUS_TRANSFER_PLAN',
+      default: '',
+      success: (value) => {
+        const stored = value && value.data !== undefined ? value.data : value;
+        this.applyPlan(stored);
+      },
+      fail: () => {}
+    });
+  },
+  applyPlan(value) {
+    if (!value) return false;
+    try {
+      let item = value;
+      if (typeof item === 'string') item = JSON.parse(item);
+      if (!item) return false;
+      this.cityName = item.cityName || '';
+      this.startStation = item.startStation || '';
+      this.endStation = item.endStation || '';
+      this.boardingStation = item.boardingStation || '';
+      this.alightingStation = item.alightingStation || '';
+      this.startLine = item.startLine || '';
+      this.changeStation = item.changeStation || '';
+      this.endLine = item.endLine || '';
+      this.totalTime = item.totalTime || '';
+      this.walkDistance = item.walkDistance || '';
+      this.legs = item.legs || '';
+      this.startWalkDistance = item.startWalkDistance || '';
+      this.endWalkDistance = item.endWalkDistance || '';
+      this.totalDistance = item.totalDistance || '';
+      this.lineSegments = item.lineSegments || '';
+      this.summary = item.summary || '';
+      return this.applyDirectPlan();
+    } catch (e) {
+      return false;
+    }
+  },
+  back() { router.back(); }
+}
+</script>
+
+<style>
+.page { position: absolute; left: 0px; top: 0px; width: 336px; height: 336px; background-color: #121921; overflow: hidden; flex-direction: column; }
+.nav { width: 336px; height: 68px; flex-direction: row; align-items: center; justify-content: space-between; padding: 8px 18px; background-color: #121921; }
+.back { width: 46px; height: 46px; border-radius: 23px; background-color: rgba(255,255,255,0.10); justify-content: center; align-items: center; }
+.back-icon { width: 24px; height: 24px; object-fit: contain; }
+.title { width: 180px; line-height: 46px; text-align: center; color: #ffffff; font-size: 24px; font-weight: bold; }
+.placeholder { width: 46px; height: 46px; }
+.plan-list { width: 336px; height: 268px; padding: 0px 18px 20px 18px; background-color: #121921; }
+.overview-item { width: 300px; height: 100px; flex-direction: column; }
+.city { width: 300px; line-height: 28px; text-align: center; color: #9ca3af; font-size: 17px; }
+.metrics { width: 300px; height: 64px; margin-top: 4px; border-radius: 14px; background-color: rgba(37,99,235,0.22); flex-direction: row; align-items: center; justify-content: space-around; }
+.metric { width: 140px; height: 58px; flex-direction: column; align-items: center; justify-content: center; }
+.metric-value { width: 140px; line-height: 32px; color: #60a5fa; font-size: 23px; font-weight: bold; text-align: center; }
+.walk-value { color: #ffffff; }
+.metric-label { width: 140px; line-height: 20px; color: #9ca3af; font-size: 15px; text-align: center; }
+.station-item { width: 300px; min-height: 82px; margin-top: 8px; padding: 12px 14px; border-radius: 14px; background-color: rgba(255,255,255,0.06); flex-direction: row; align-items: flex-start; }
+.destination-item { margin-bottom: 18px; }
+.station-dot { width: 14px; height: 14px; margin-top: 9px; border-radius: 7px; }
+.start-dot { background-color: #34d399; }
+.end-dot { background-color: #fb923c; }
+.station-copy { width: 250px; margin-left: 12px; flex-direction: column; }
+.station-label { width: 250px; line-height: 22px; color: #9ca3af; font-size: 15px; }
+.station-name { width: 250px; line-height: 28px; color: #ffffff; font-size: 21px; font-weight: bold; }
+.station-note { width: 250px; line-height: 24px; color: #cbd5e1; font-size: 16px; }
+.route-item { width: 300px; min-height: 110px; margin-top: 8px; }
+.route-card { width: 300px; min-height: 104px; padding: 12px 14px; border-radius: 14px; border: 2px solid rgba(56,163,255,0.28); background-color: rgba(56,163,255,0.10); flex-direction: row; align-items: center; }
+.bus-icon { width: 38px; height: 38px; object-fit: contain; }
+.route-copy { width: 224px; margin-left: 12px; flex-direction: column; }
+.route-line { width: 224px; line-height: 28px; color: #60a5fa; font-size: 21px; font-weight: bold; }
+.route-stations { width: 224px; line-height: 24px; color: #ffffff; font-size: 16px; font-weight: bold; }
+.route-note { width: 224px; line-height: 22px; color: #9ca3af; font-size: 15px; }
+.transfer-note { width: 224px; line-height: 23px; color: #fb923c; font-size: 15px; font-weight: bold; }
+.fallback-item { width: 300px; min-height: 90px; margin-top: 8px; padding: 12px 14px; border-radius: 14px; background-color: rgba(255,255,255,0.06); }
+.fallback-text { width: 272px; line-height: 26px; color: #e5e7eb; font-size: 17px; }
+</style>

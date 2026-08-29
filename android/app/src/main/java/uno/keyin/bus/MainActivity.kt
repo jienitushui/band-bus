@@ -6,11 +6,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
+import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,6 +21,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.chip.Chip
+import org.json.JSONObject
+import org.json.JSONArray
 import uno.keyin.bus.databinding.ActivityMainBinding
 import uno.keyin.bus.location.PhoneLocationCache
 import uno.keyin.bus.location.PhoneLocationHelper
@@ -31,6 +37,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val homeAdapter = BusHomeNearbyAdapter()
+    private val searchAdapter = BusSearchAdapter(::onSearchResultClicked)
+    private val routeAdapter = TransferAdapter(::syncRoutePlan)
+    private lateinit var routeSuggestionAdapter: TransferStationAdapter
     private var currentNodeId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val resumeRefreshRunnable = Runnable { refreshNodes() }
@@ -40,8 +49,19 @@ class MainActivity : AppCompatActivity() {
     private var loadedCityVersion = Long.MIN_VALUE
     private var homeLoadGeneration = 0
     private var homeStateText: String? = null
+    private var searchGeneration = 0
+    private var nearbyStations: List<StationUi> = emptyList()
+    private var nearbyStateText: String? = null
+    private var hasNearbySnapshot = false
+    private val searchRunnable = Runnable { runSearch(binding.inputSearch.text?.toString().orEmpty()) }
+    private var routeSuggestionGeneration = 0
+    private var activeRouteField = 1
+    private var searchRouteAfterLocationGrant = false
+    private val routeSuggestionRunnable = Runnable { loadRouteSuggestions() }
 
     private val citySelectionLauncher = registerForActivityResult(StartActivityForResult()) {
+        binding.inputSearch.setText("")
+        searchAdapter.submitList(emptyList())
         applyCityAndRefresh(force = false)
     }
 
@@ -63,8 +83,13 @@ class MainActivity : AppCompatActivity() {
                 sendLocationAfterLocationGrant = false
                 sendCurrentLocationToWatch()
             }
+            if (searchRouteAfterLocationGrant) {
+                searchRouteAfterLocationGrant = false
+                searchRouteTransfer()
+            }
         } else {
             sendLocationAfterLocationGrant = false
+            searchRouteAfterLocationGrant = false
         }
     }
 
@@ -79,6 +104,15 @@ class MainActivity : AppCompatActivity() {
 
         binding.recyclerHomeStations.layoutManager = LinearLayoutManager(this)
         binding.recyclerHomeStations.adapter = homeAdapter
+        binding.recyclerSearchResults.layoutManager = LinearLayoutManager(this)
+        binding.recyclerSearchResults.adapter = searchAdapter
+        setupTransferPanel()
+        binding.clearSearchHistory.setOnClickListener {
+            SearchHistoryStore.clear(this, CityConfigStore.get(this))
+            renderSearchHistory()
+        }
+        binding.cancelSearch.setOnClickListener { cancelHomeSearch() }
+        renderSearchHistory()
 
         binding.btnOpenSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -98,7 +132,25 @@ class MainActivity : AppCompatActivity() {
         selectHomeSubTab(HomeSubTab.Nearby)
 
         binding.inputSearch.doAfterTextChanged { e ->
-            homeAdapter.setSearchFilter(e?.toString().orEmpty())
+            val keyword = e?.toString().orEmpty().trim()
+            mainHandler.removeCallbacks(searchRunnable)
+            if (keyword.isEmpty()) {
+                searchGeneration += 1
+                searchAdapter.submitList(emptyList())
+                binding.cancelSearch.visibility = View.GONE
+                binding.recyclerSearchResults.visibility = View.GONE
+                homeAdapter.setSearchFilter("")
+                renderSearchHistory()
+                showMainSection(isHome = true)
+                restoreNearbyAfterSearch()
+            } else {
+                binding.cancelSearch.visibility = View.VISIBLE
+                binding.searchHistoryPanel.visibility = View.GONE
+                binding.recyclerHomeStations.visibility = View.GONE
+                binding.recyclerSearchResults.visibility = View.VISIBLE
+                showHomeState(null)
+                mainHandler.postDelayed(searchRunnable, 300)
+            }
         }
 
         binding.bottomNavigation.setOnItemSelectedListener { item ->
@@ -108,8 +160,7 @@ class MainActivity : AppCompatActivity() {
                     true
                 }
                 R.id.nav_route -> {
-                    showMainSection(isHome = false)
-                    binding.textPlaceholderTab.setText(R.string.placeholder_route_plan)
+                    showTransferSection()
                     true
                 }
                 R.id.nav_favorites -> {
@@ -136,14 +187,19 @@ class MainActivity : AppCompatActivity() {
         binding.panelHomeHeader.visibility = if (isHome) View.VISIBLE else View.GONE
         if (!isHome) {
             binding.scrollPlaceholderTab.visibility = View.VISIBLE
+            binding.panelTransfer.visibility = View.GONE
             binding.recyclerHomeStations.visibility = View.GONE
+            binding.recyclerSearchResults.visibility = View.GONE
             binding.textHomeState.visibility = View.GONE
             return
         }
+        binding.panelTransfer.visibility = View.GONE
         binding.scrollPlaceholderTab.visibility =
             if (homeSubTab == HomeSubTab.Realtime) View.VISIBLE else View.GONE
         binding.recyclerHomeStations.visibility =
-            if (homeSubTab == HomeSubTab.Realtime) View.GONE else View.VISIBLE
+            if (homeSubTab == HomeSubTab.Realtime || binding.inputSearch.text?.isNotBlank() == true) View.GONE else View.VISIBLE
+        binding.recyclerSearchResults.visibility =
+            if (homeSubTab == HomeSubTab.Realtime || binding.inputSearch.text?.isBlank() != false) View.GONE else View.VISIBLE
         binding.textHomeState.visibility =
             if (homeSubTab == HomeSubTab.Nearby && homeStateText != null) View.VISIBLE else View.GONE
         if (homeSubTab == HomeSubTab.Realtime) {
@@ -190,7 +246,288 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(resumeRefreshRunnable)
+        mainHandler.removeCallbacks(searchRunnable)
+        mainHandler.removeCallbacks(routeSuggestionRunnable)
         super.onDestroy()
+    }
+
+    private fun setupTransferPanel() {
+        binding.recyclerRouteSchemes.layoutManager = LinearLayoutManager(this)
+        binding.recyclerRouteSchemes.adapter = routeAdapter
+        routeSuggestionAdapter = TransferStationAdapter { value ->
+            val target = if (activeRouteField == 1) binding.inputRouteStart else binding.inputRouteEnd
+            target.setText(value)
+            target.setSelection(value.length)
+            hideRouteSuggestions(clearFocus = true)
+        }
+        binding.routeStationSuggestions.layoutManager = LinearLayoutManager(this)
+        binding.routeStationSuggestions.adapter = routeSuggestionAdapter
+        binding.inputRouteStart.setText(R.string.transfer_my_location)
+        binding.inputRouteStart.doAfterTextChanged {
+            if (!binding.inputRouteStart.hasFocus()) return@doAfterTextChanged
+            activeRouteField = 1
+            queueRouteSuggestions(it?.toString().orEmpty())
+        }
+        binding.inputRouteEnd.doAfterTextChanged {
+            if (!binding.inputRouteEnd.hasFocus()) return@doAfterTextChanged
+            activeRouteField = 2
+            queueRouteSuggestions(it?.toString().orEmpty())
+        }
+        binding.inputRouteStart.setOnFocusChangeListener { _, focused ->
+            if (focused) {
+                activeRouteField = 1
+                queueRouteSuggestions(binding.inputRouteStart.text?.toString().orEmpty())
+            } else if (!binding.inputRouteEnd.hasFocus()) {
+                hideRouteSuggestions()
+            }
+        }
+        binding.inputRouteEnd.setOnFocusChangeListener { _, focused ->
+            if (focused) {
+                activeRouteField = 2
+                queueRouteSuggestions(binding.inputRouteEnd.text?.toString().orEmpty())
+            } else if (!binding.inputRouteStart.hasFocus()) {
+                hideRouteSuggestions()
+            }
+        }
+        binding.btnRouteSearch.setOnClickListener {
+            hideRouteSuggestions(clearFocus = true)
+            searchRouteTransfer()
+        }
+    }
+
+    private fun showTransferSection() {
+        binding.panelHomeHeader.visibility = View.GONE
+        binding.scrollPlaceholderTab.visibility = View.GONE
+        binding.recyclerHomeStations.visibility = View.GONE
+        binding.recyclerSearchResults.visibility = View.GONE
+        binding.textHomeState.visibility = View.GONE
+        binding.panelTransfer.visibility = View.VISIBLE
+    }
+
+    private fun queueRouteSuggestions(value: String) {
+        mainHandler.removeCallbacks(routeSuggestionRunnable)
+        val keyword = value.trim()
+        if (keyword.isEmpty() || keyword == getString(R.string.transfer_my_location)) {
+            routeSuggestionGeneration += 1
+            routeSuggestionAdapter.submitList(emptyList())
+            binding.routeStationSuggestions.visibility = View.GONE
+            return
+        }
+        mainHandler.postDelayed(routeSuggestionRunnable, 300)
+    }
+
+    private fun hideRouteSuggestions(clearFocus: Boolean = false) {
+        mainHandler.removeCallbacks(routeSuggestionRunnable)
+        routeSuggestionGeneration += 1
+        routeSuggestionAdapter.submitList(emptyList())
+        binding.routeStationSuggestions.visibility = View.GONE
+        if (clearFocus) {
+            binding.inputRouteStart.clearFocus()
+            binding.inputRouteEnd.clearFocus()
+        }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (
+            event.action == MotionEvent.ACTION_DOWN &&
+            ::binding.isInitialized &&
+            binding.panelTransfer.visibility == View.VISIBLE &&
+            binding.routeStationSuggestions.visibility == View.VISIBLE &&
+            !event.isInside(binding.inputRouteStart) &&
+            !event.isInside(binding.inputRouteEnd) &&
+            !event.isInside(binding.routeStationSuggestions)
+        ) {
+            hideRouteSuggestions(clearFocus = true)
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun MotionEvent.isInside(view: View): Boolean {
+        if (view.visibility != View.VISIBLE) return false
+        val bounds = Rect()
+        return view.getGlobalVisibleRect(bounds) && bounds.contains(rawX.toInt(), rawY.toInt())
+    }
+
+    private fun loadRouteSuggestions() {
+        val keyword = (if (activeRouteField == 1) binding.inputRouteStart else binding.inputRouteEnd)
+            .text?.toString()?.trim().orEmpty()
+        if (keyword.isEmpty()) return
+        val city = CityConfigStore.get(this)
+        val generation = ++routeSuggestionGeneration
+        BusApiClient.executor.execute {
+            val result = runCatching { BusApiClient.searchStations(city, keyword) }
+            mainHandler.post {
+                if (generation != routeSuggestionGeneration) return@post
+                result.onSuccess { values ->
+                    routeSuggestionAdapter.submitList(values)
+                    val target = if (activeRouteField == 1) binding.inputRouteStart else binding.inputRouteEnd
+                    binding.routeStationSuggestions.visibility =
+                        if (values.isEmpty() || !target.hasFocus()) View.GONE else View.VISIBLE
+                }.onFailure { binding.routeStationSuggestions.visibility = View.GONE }
+            }
+        }
+    }
+
+    private fun searchRouteTransfer() {
+        binding.routeStationSuggestions.visibility = View.GONE
+        val start = binding.inputRouteStart.text?.toString()?.trim().orEmpty()
+        val end = binding.inputRouteEnd.text?.toString()?.trim().orEmpty()
+        if (start.isEmpty() || end.isEmpty()) {
+            binding.textRouteState.setText(R.string.transfer_input_required)
+            return
+        }
+        val city = CityConfigStore.get(this)
+        binding.textRouteState.setText(R.string.transfer_loading)
+        if (start != getString(R.string.transfer_my_location)) {
+            executeTransferQuery(city, start, end, "", "")
+            return
+        }
+        if (!PhoneLocationHelper.hasLocationPermission(this)) {
+            searchRouteAfterLocationGrant = true
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+            return
+        }
+        PhoneLocationHelper.fetchBestLocation(this, highAccuracy = true) { location ->
+            mainHandler.post {
+                if (location == null) {
+                    binding.textRouteState.setText(R.string.transfer_location_failed)
+                    return@post
+                }
+                val converted = uno.keyin.bus.location.Wgs84ToGcj02.convert(location.latitude, location.longitude)
+                executeTransferQuery(city, start, end, converted.first.toString(), converted.second.toString())
+            }
+        }
+    }
+
+    private fun executeTransferQuery(city: CityConfig, start: String, end: String, lat: String, lng: String) {
+        BusApiClient.executor.execute {
+            val result = runCatching { BusApiClient.loadTransfer(city, start, end, lat, lng) }
+            mainHandler.post {
+                result.onSuccess { schemes ->
+                    routeAdapter.submitList(schemes)
+                    binding.textRouteState.text = if (schemes.isEmpty()) {
+                        getString(R.string.transfer_empty)
+                    } else {
+                        "共 ${schemes.size} 个方案，上下滑动查看全部"
+                    }
+                }.onFailure { binding.textRouteState.setText(R.string.transfer_failed) }
+            }
+        }
+    }
+
+    private fun syncRoutePlan(scheme: TransferScheme) {
+        val summary = scheme.routeSummary()
+        if (summary.isBlank()) {
+            binding.textRouteState.setText(R.string.transfer_plan_incomplete)
+            return
+        }
+        val city = CityConfigStore.get(this)
+        val payload = JSONObject().apply {
+            put("type", LocationRelayService.TYPE_TRANSFER_PLAN)
+            put("cityName", city.cityName)
+            put("cityKey", city.cityKey)
+            put("startStation", scheme.startStation)
+            put("endStation", scheme.endStation)
+            put("boardingStation", scheme.boardingStation)
+            put("alightingStation", scheme.alightingStation)
+            put("startLine", scheme.startLine)
+            put("changeStation", scheme.changeStation)
+            put("endLine", scheme.endLine)
+            put("totalTime", scheme.totalTime)
+            put("walkDistance", scheme.walkDistance)
+            put("lineSegments", JSONArray(scheme.lineSegments))
+            put("startWalkDistance", scheme.startWalkDistance)
+            put("endWalkDistance", scheme.endWalkDistance)
+            put("totalDistance", scheme.totalDistance)
+            put("legs", scheme.legsJson())
+            put("summary", summary)
+            put("ts", System.currentTimeMillis())
+        }.toString()
+        LocationRelayService.pushTransferPlan(this, payload)
+        binding.textRouteState.setText(R.string.transfer_sync_requested)
+    }
+
+    private fun runSearch(keyword: String) {
+        val query = keyword.trim()
+        if (query.isEmpty()) return
+        val city = CityConfigStore.get(this)
+        val generation = ++searchGeneration
+        searchAdapter.submitList(emptyList())
+        BusApiClient.executor.execute {
+            val result = runCatching { BusApiClient.search(city, query) }
+            mainHandler.post {
+                if (generation != searchGeneration || CityConfigStore.get(this).version != city.version) return@post
+                result.onSuccess { items ->
+                    searchAdapter.submitList(items)
+                    if (items.isNotEmpty()) {
+                        SearchHistoryStore.add(this, city, query)
+                    }
+                    showHomeState(if (items.isEmpty()) getString(R.string.home_search_empty) else null)
+                }.onFailure {
+                    searchAdapter.submitList(emptyList())
+                    showHomeState(getString(R.string.home_search_failed))
+                }
+            }
+        }
+    }
+
+    private fun cancelHomeSearch() {
+        mainHandler.removeCallbacks(searchRunnable)
+        searchGeneration += 1
+        binding.inputSearch.setText("")
+        binding.inputSearch.clearFocus()
+        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(binding.inputSearch.windowToken, 0)
+    }
+
+    private fun restoreNearbyAfterSearch() {
+        if (homeSubTab != HomeSubTab.Nearby) return
+        if (hasNearbySnapshot) {
+            homeAdapter.submitList(nearbyStations)
+            showHomeState(nearbyStateText)
+        } else if (PhoneLocationHelper.hasLocationPermission(this)) {
+            loadNearbyForCity(CityConfigStore.get(this))
+        }
+    }
+
+    private fun onSearchResultClicked(item: SearchResult) {
+        if (item.type == SearchResultType.STATION) {
+            cancelHomeSearch()
+            startActivity(Intent(this, StationDetailActivity::class.java).apply {
+                putExtra(StationDetailActivity.EXTRA_STATION_NAME, item.name)
+            })
+            return
+        }
+        startActivity(Intent(this, LineDetailActivity::class.java).apply {
+            putExtra(LineDetailActivity.EXTRA_LINE_NAME, item.lineName)
+            putExtra(LineDetailActivity.EXTRA_DIRECTION, item.direction)
+        })
+    }
+
+    private fun renderSearchHistory() {
+        val panel = binding.searchHistoryPanel
+        val group = binding.searchHistoryChips
+        group.removeAllViews()
+        val values = SearchHistoryStore.get(this, CityConfigStore.get(this))
+        panel.visibility = if (values.isEmpty() || binding.inputSearch.text?.isNotBlank() == true) View.GONE else View.VISIBLE
+        values.forEach { keyword ->
+            val chip = Chip(this).apply {
+                text = keyword
+                isCloseIconVisible = true
+                isCheckable = false
+                setOnClickListener { binding.inputSearch.setText(keyword) }
+                setOnCloseIconClickListener {
+                    SearchHistoryStore.remove(this@MainActivity, CityConfigStore.get(this@MainActivity), keyword)
+                    renderSearchHistory()
+                }
+            }
+            group.addView(chip)
+        }
     }
 
     private fun requestPostNotificationsThenStartRelay() {
@@ -261,7 +598,13 @@ class MainActivity : AppCompatActivity() {
         val city = CityConfigStore.get(this)
         binding.textCityName.text = city.displayName
         if (!force && loadedCityVersion == city.version) return
+        if (loadedCityVersion != city.version) {
+            nearbyStations = emptyList()
+            nearbyStateText = null
+            hasNearbySnapshot = false
+        }
         loadedCityVersion = city.version
+        renderSearchHistory()
         homeAdapter.submitList(emptyList())
         if (!PhoneLocationHelper.hasLocationPermission(this)) {
             showHomeState(getString(R.string.toast_requesting_location))
@@ -296,13 +639,17 @@ class MainActivity : AppCompatActivity() {
                         return@post
                     }
                     result.onSuccess { stations ->
+                        nearbyStations = stations
+                        nearbyStateText = if (stations.isEmpty()) getString(R.string.home_nearby_empty) else null
+                        hasNearbySnapshot = true
                         homeAdapter.submitList(stations)
-                        showHomeState(
-                            if (stations.isEmpty()) getString(R.string.home_nearby_empty) else null,
-                        )
+                        showHomeState(nearbyStateText)
                     }.onFailure {
+                        nearbyStations = emptyList()
+                        nearbyStateText = getString(R.string.home_nearby_failed)
+                        hasNearbySnapshot = true
                         homeAdapter.submitList(emptyList())
-                        showHomeState(getString(R.string.home_nearby_failed))
+                        showHomeState(nearbyStateText)
                     }
                 }
             }
