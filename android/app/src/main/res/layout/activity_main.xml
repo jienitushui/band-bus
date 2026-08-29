@@ -233,6 +233,56 @@
                 android:visibility="gone"
                 tools:listitem="@layout/item_search_result" />
 
+            <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                android:id="@+id/swipeRealtime"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerRealtimeBus"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:paddingHorizontal="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="88dp"
+                    tools:listitem="@layout/item_realtime_bus" />
+            </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+            <TextView
+                android:id="@+id/textRealtimeState"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/home_screen_bg"
+                android:gravity="center"
+                android:lineSpacingExtra="4dp"
+                android:padding="28dp"
+                android:textColor="#6B7280"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerFavorites"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:padding="16dp"
+                android:visibility="gone"
+                tools:listitem="@layout/item_realtime_bus" />
+
+            <TextView
+                android:id="@+id/textFavoritesState"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/home_screen_bg"
+                android:gravity="center"
+                android:padding="28dp"
+                android:text="@string/favorites_empty"
+                android:textColor="#6B7280"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
             <LinearLayout
                 android:id="@+id/panelTransfer"
                 android:layout_width="match_parent"

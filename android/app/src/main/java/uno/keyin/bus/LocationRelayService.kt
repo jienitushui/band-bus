@@ -107,6 +107,11 @@ class LocationRelayService : Service() {
                 listenerRegisteredForNode?.let(::sendPendingTransferPlan)
                     ?: mainHandler.post { refreshNodeAndRegisterListener(forceRelisten = true) }
             }
+            ACTION_PUSH_REALTIME_TARGETS -> {
+                savePendingRealtimeTargets(RealtimeWatchStore.toSyncPayload(applicationContext))
+                listenerRegisteredForNode?.let(::sendPendingRealtimeTargets)
+                    ?: mainHandler.post { refreshNodeAndRegisterListener(forceRelisten = true) }
+            }
         }
         return START_STICKY
     }
@@ -314,6 +319,7 @@ class LocationRelayService : Service() {
                 mainHandler.post {
                     sendCityConfig(nodeId)
                     sendPendingTransferPlan(nodeId)
+                    sendPendingRealtimeTargets(nodeId, keepPending = true)
                     maybeSendProactiveLocationSnapshot(nodeId)
                 }
             },
@@ -366,9 +372,11 @@ class LocationRelayService : Service() {
                 touchLocationSessionFromWatch()
                 rescheduleLocationWarmupSoon()
                 sendCityConfig(nodeId)
+                sendPendingRealtimeTargets(nodeId, keepPending = true)
                 return
             }
             TYPE_REQUEST_CITY_CONFIG -> sendCityConfig(nodeId)
+            TYPE_REQUEST_REALTIME_TARGETS -> sendPendingRealtimeTargets(nodeId, keepPending = true)
             TYPE_REQUEST_LOCATION -> handleWatchLocationRequest(nodeId, json)
             else -> return
         }
@@ -401,6 +409,28 @@ class LocationRelayService : Service() {
             onOk = {
                 if (prefs.getString(KEY_PENDING_TRANSFER_PLAN, "") == payload) {
                     prefs.edit().remove(KEY_PENDING_TRANSFER_PLAN).apply()
+                }
+            },
+            onErr = {},
+        )
+    }
+
+    private fun savePendingRealtimeTargets(payload: String) {
+        getSharedPreferences(PREFS_TRANSFER, MODE_PRIVATE).edit()
+            .putString(KEY_PENDING_REALTIME_TARGETS, payload).apply()
+    }
+
+    private fun sendPendingRealtimeTargets(nodeId: String, keepPending: Boolean = false) {
+        val prefs = getSharedPreferences(PREFS_TRANSFER, MODE_PRIVATE)
+        val payload = prefs.getString(KEY_PENDING_REALTIME_TARGETS, "").orEmpty()
+            .ifBlank { RealtimeWatchStore.toSyncPayload(applicationContext) }
+        XmsWearSdkBridge.sendTextToNode(
+            applicationContext,
+            nodeId,
+            payload,
+            onOk = {
+                if (!keepPending && prefs.getString(KEY_PENDING_REALTIME_TARGETS, "") == payload) {
+                    prefs.edit().remove(KEY_PENDING_REALTIME_TARGETS).apply()
                 }
             },
             onErr = {},
@@ -505,6 +535,7 @@ class LocationRelayService : Service() {
         private const val NOTIFICATION_ID = 7101
         private const val PREFS_TRANSFER = "bus_transfer_relay"
         private const val KEY_PENDING_TRANSFER_PLAN = "pending_transfer_plan"
+        private const val KEY_PENDING_REALTIME_TARGETS = "pending_realtime_targets"
 
         /** MainActivity 修改守护间隔/开关后触发，重新调度定时检查 */
         const val ACTION_REFRESH_NOTIF_WATCHDOG = "uno.keyin.bus.action.REFRESH_NOTIF_WATCHDOG"
@@ -514,6 +545,7 @@ class LocationRelayService : Service() {
 
         const val ACTION_PUSH_CITY_CONFIG = "uno.keyin.bus.action.PUSH_CITY_CONFIG"
         const val ACTION_PUSH_TRANSFER_PLAN = "uno.keyin.bus.action.PUSH_TRANSFER_PLAN"
+        const val ACTION_PUSH_REALTIME_TARGETS = "uno.keyin.bus.action.PUSH_REALTIME_TARGETS"
         const val EXTRA_TRANSFER_PLAN = "transfer_plan_payload"
 
         /** 手表侧忽略；经 Wear 发往手表以保持消息通道活跃（锁屏休眠后易超时） */
@@ -526,6 +558,8 @@ class LocationRelayService : Service() {
         const val TYPE_REQUEST_CITY_CONFIG = "request_city_config"
         const val TYPE_PHONE_LOCATION_ERROR = "phone_location_error"
         const val TYPE_TRANSFER_PLAN = "transfer_plan"
+        const val TYPE_REALTIME_WATCH_TARGETS = "realtime_watch_targets"
+        const val TYPE_REQUEST_REALTIME_TARGETS = "request_realtime_watch_targets"
 
         /** 每 15s 一轮；每 4 轮（约 60s）在同节点上强制重绑 Wear 消息监听 */
         private const val FORCE_LISTENER_REFRESH_EVERY_N_TICKS = 4
@@ -563,6 +597,14 @@ class LocationRelayService : Service() {
             val intent = Intent(context, LocationRelayService::class.java).apply {
                 action = ACTION_PUSH_TRANSFER_PLAN
                 putExtra(EXTRA_TRANSFER_PLAN, payload)
+            }
+            runCatching { ContextCompat.startForegroundService(context, intent) }
+        }
+
+        fun pushRealtimeTargets(context: Context) {
+            if (!PhoneLocationHelper.hasLocationPermission(context)) return
+            val intent = Intent(context, LocationRelayService::class.java).apply {
+                action = ACTION_PUSH_REALTIME_TARGETS
             }
             runCatching { ContextCompat.startForegroundService(context, intent) }
         }

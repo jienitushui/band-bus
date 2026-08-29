@@ -352,6 +352,53 @@ object BusApiClient {
         }
     }
 
+    fun loadStationPlatforms(
+        city: CityConfig,
+        stationName: String,
+        lat: String,
+        lng: String,
+    ): List<StationPlatform> {
+        if (stationName.isBlank() || lat.isBlank() || lng.isBlank()) return emptyList()
+        val json = postWithRetry(
+            mapOf(
+                "CMD" to "209",
+                "CITYNAME" to city.cityName,
+                "CITYKEY" to city.cityKey,
+                "STATIONNAME" to stationName,
+                "MYLAT" to lat,
+                "MYLNG" to lng,
+                "LAT" to lat,
+                "LNG" to lng,
+            ),
+        )
+        return parseStationPlatforms(json)
+    }
+
+    internal fun parseStationPlatforms(json: JSONObject): List<StationPlatform> {
+        if (json.optInt("status") != 1) return emptyList()
+        val rows = json.optJSONArray("info")
+            ?: json.optJSONObject("data")?.optJSONArray("info")
+            ?: return emptyList()
+        return buildList {
+            for (index in 0 until rows.length()) {
+                val item = rows.optJSONObject(index) ?: continue
+                val name = item.optString("name").trim()
+                val lat = item.optString("lat").ifBlank { item.optString("latitude") }.trim()
+                val lng = item.optString("lng").ifBlank { item.optString("lon") }.trim()
+                if (name.isBlank() || lat.toDoubleOrNull() == null || lng.toDoubleOrNull() == null) continue
+                add(
+                    StationPlatform(
+                        name = name,
+                        lat = lat,
+                        lng = lng,
+                        distance = item.optDouble("dis", 0.0),
+                        sameCount = item.optInt("sameNum", 0),
+                    ),
+                )
+            }
+        }.distinctBy { "${it.name}|${it.lat}|${it.lng}" }.sortedBy { it.distance }
+    }
+
     fun loadLineDetail(city: CityConfig, lineName: String, direction: String): LineDetail {
         val json = postWithRetry(mapOf(
             "CMD" to "103", "CITYNAME" to city.cityName, "CITYKEY" to city.cityKey,
@@ -424,7 +471,12 @@ object BusApiClient {
             for (i in 0 until data.length()) {
                 val item = data.optJSONObject(i) ?: continue
                 val name = item.optString("showName").ifBlank { item.optString("stationName") }.trim()
-                if (name.isNotEmpty()) add(LineStation(item.optInt("stationOrder", i + 1), name))
+                if (name.isNotEmpty()) add(LineStation(
+                    order = item.optInt("stationOrder", i + 1),
+                    name = name,
+                    lat = item.optString("station_lat").ifBlank { item.optString("lat").ifBlank { item.optString("stationLat") } },
+                    lng = item.optString("station_lon").ifBlank { item.optString("lon").ifBlank { item.optString("lng").ifBlank { item.optString("stationLng") } } },
+                ))
             }
         }
         val firstLast = json.optJSONArray("firstLast")?.optJSONObject(0)

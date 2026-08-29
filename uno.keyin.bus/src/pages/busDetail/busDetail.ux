@@ -7,7 +7,7 @@
       <div class="detail-title-wrap">
         <text class="route-title" style="lines:1;">{{routeTitle}}</text>
         <div class="route-sub-hit" @click="onRouteSubClick">
-          <text class="route-sub {{firstLastText ? 'route-sub-link' : ''}}" style="lines:1;">{{firstLastText}}</text>
+          <marquee class="route-sub {{firstLastText ? 'route-sub-link' : ''}}" scrollamount="20" direction="left">{{firstLastText}}</marquee>
         </div>
       </div>
       <div class="round-btn direction-btn" @click="switchDirection">
@@ -62,6 +62,8 @@ import device from '@system.device'
 const DESIGN_WIDTH = 336;
 const DEFAULT_PAGE_HEIGHT = 336;
 const DETAIL_LIST_TOP = 94;
+const REALTIME_REFRESH_MS = 25000;
+const REALTIME_STALE_MS = 45000;
 const ETA_STRIP_HEIGHT = 36;
 const DEFAULT_CITY_NAME = '泉州市';
 const DEFAULT_CITY_KEY = 'qz595803';
@@ -91,6 +93,10 @@ export default {
     schedulePlan103: '',
     scheduleRealtimeEta: '',
     schedulePlan104: ''
+    ,realtimeTimer: null
+    ,realtimeLoading: false
+    ,lastRealtimeSuccessAt: 0
+    ,pageActive: false
   },
   onInit() {
     this.cityName = this.cityName ? String(this.cityName) : DEFAULT_CITY_NAME;
@@ -102,7 +108,17 @@ export default {
     this.initLayout();
     this.loadDetail();
   },
+  onShow() {
+    this.pageActive = true;
+    this.scheduleRealtimeRefresh(1000);
+  },
+  onHide() {
+    this.pageActive = false;
+    this.stopRealtimeRefresh();
+  },
   onDestroy() {
+    this.pageActive = false;
+    this.stopRealtimeRefresh();
     this.stationList = null;
     this.realtimeList = null;
   },
@@ -348,13 +364,16 @@ export default {
   },
 
   async loadRealtime(lineName) {
-    if (!lineName) return;
+    if (!lineName || this.realtimeLoading) return;
+    this.realtimeLoading = true;
+    this.stopRealtimeRefresh();
 
     try {
       const body =
         `CMD=104&CITYNAME=${encodeURIComponent(this.cityName)}&LINENAME=${encodeURIComponent(lineName)}&DIRECTION=${this.direction}&CITYKEY=${encodeURIComponent(this.cityKey)}&STATIONORDER=${this.stationorder}`;
 
       const realtime = await this.apiPost(body);
+      this.lastRealtimeSuccessAt = Date.now();
       const buses = Array.isArray(realtime && realtime.list) ? realtime.list : [];
       const eta = realtime && Array.isArray(realtime.routeOnStationRTimeInfoList)
         ? realtime.routeOnStationRTimeInfoList[0]
@@ -387,8 +406,30 @@ export default {
       }
       this.updateStationListLayout();
     } catch (e) {
-      this.realtimeList = [];
+      if (this.lastRealtimeSuccessAt && Date.now() - this.lastRealtimeSuccessAt >= REALTIME_STALE_MS) {
+        const text = String(this.realtimeText || '').replace(/ · 数据可能已过期/g, '');
+        this.realtimeText = text ? `${text} · 数据可能已过期` : '数据可能已过期';
+      }
       this.updateStationListLayout();
+    } finally {
+      this.realtimeLoading = false;
+      this.scheduleRealtimeRefresh(REALTIME_REFRESH_MS);
+    }
+  },
+
+  scheduleRealtimeRefresh(delay) {
+    this.stopRealtimeRefresh();
+    if (!this.pageActive) return;
+    this.realtimeTimer = setTimeout(() => {
+      this.realtimeTimer = null;
+      this.loadRealtime(this.normalizeLineName(this.linename));
+    }, delay || REALTIME_REFRESH_MS);
+  },
+
+  stopRealtimeRefresh() {
+    if (this.realtimeTimer) {
+      clearTimeout(this.realtimeTimer);
+      this.realtimeTimer = null;
     }
   },
 
@@ -538,8 +579,9 @@ export default {
   min-height: 28px;
   padding: 2px 0px 4px 0px;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow: hidden;
 }
 
 .route-sub {
@@ -549,7 +591,6 @@ export default {
   font-weight: bold;
   color: rgba(255,255,255,0.62);
   text-align: center;
-  text-overflow: ellipsis;
 }
 
 .route-sub-link {

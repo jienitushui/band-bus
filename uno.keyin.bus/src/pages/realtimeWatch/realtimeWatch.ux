@@ -1,0 +1,197 @@
+<template>
+  <div class="page">
+    <div class="nav">
+      <div class="back" @click="back"><image static src="/common/images/icon_back1.png" class="back-icon" /></div>
+      <div class="title-wrap">
+        <text static class="title">实时候车</text>
+        <text class="updated" style="lines:1;">{{updatedText}}</text>
+      </div>
+      <div class="refresh {{loading ? 'refresh-loading' : ''}}" @click="refresh"><image static src="/common/images/icon_refresh1.png" class="refresh-icon" /></div>
+    </div>
+
+    <div if="{{loading && rows.length === 0}}" class="state"><text static class="state-text">正在刷新…</text></div>
+    <div if="{{!loading && rows.length === 0}}" class="state"><text class="state-text">{{emptyText}}</text></div>
+
+    <list if="{{rows.length > 0}}" class="list" bounces="false">
+      <list-item for="{{rows}}" type="target" class="item">
+        <div class="card" @click="openLine($item)">
+          <div class="line-row">
+            <text class="line" style="lines:1;">{{$item.lineName}}</text>
+            <div class="eta-wrap"><text class="eta" style="lines:1;">{{$item.status}}</text></div>
+          </div>
+          <text class="direction" style="lines:1;">开往 {{$item.direction}}</text>
+          <text class="station" style="lines:1;">候车站 · {{$item.stationName}} {{$item.platformLabel}}</text>
+        </div>
+      </list-item>
+    </list>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import storage from '@system.storage';
+import fetch from '@system.fetch';
+
+const API_URL = 'https://h5.mygolbs.com/ApiData.do';
+const CACHE_KEY = 'BUS_REALTIME_WATCH_TARGETS';
+const REFRESH_MS = 25000;
+
+export default {
+  private: {
+    rows: [],
+    loading: true,
+    emptyText: '手机端还没有关注候车线路',
+    updatedText: '等待刷新',
+    timer: null,
+    active: false
+  },
+  onShow() { this.active = true; this.loadTargets(); },
+  onHide() { this.active = false; this.stopTimer(); },
+  onDestroy() { this.active = false; this.stopTimer(); },
+  back() { router.back(); },
+  refresh() { this.loadTargets(); },
+  stopTimer() {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+  },
+  schedule() {
+    this.stopTimer();
+    if (!this.active) return;
+    this.timer = setTimeout(() => { this.timer = null; this.loadTargets(); }, REFRESH_MS);
+  },
+  loadTargets() {
+    this.stopTimer();
+    storage.get({
+      key: CACHE_KEY,
+      default: '',
+      success: (value) => {
+        try {
+          const raw = value && value.data !== undefined ? value.data : value;
+          const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          const targets = payload && Array.isArray(payload.targets) ? payload.targets : [];
+          if (!targets.length) {
+            this.rows = [];
+            this.loading = false;
+            this.schedule();
+            return;
+          }
+          this.refreshTargets(targets);
+        } catch (e) {
+          this.rows = [];
+          this.loading = false;
+          this.emptyText = '候车数据读取失败';
+          this.schedule();
+        }
+      },
+      fail: () => { this.loading = false; this.schedule(); }
+    });
+  },
+  async refreshTargets(targets) {
+    this.loading = true;
+    const out = [];
+    let hadFailure = false;
+    const groups = [];
+    const groupMap = {};
+    targets.forEach((target) => {
+      const key = [target.cityName, target.stationName, target.stationLat, target.stationLng].join('|');
+      if (!groupMap[key]) {
+        groupMap[key] = { target, targets: [] };
+        groups.push(groupMap[key]);
+      }
+      groupMap[key].targets.push(target);
+    });
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      try {
+        const data = await this.apiPost(group.target);
+        const lines = data && Array.isArray(data.data) ? data.data : [];
+        group.targets.forEach((target) => out.push(this.toRow(target, this.findLine(lines, target))));
+      } catch (e) {
+        hadFailure = true;
+        group.targets.forEach((target) => {
+          const previous = this.rows.find((row) => this.targetKey(row) === this.targetKey(target));
+          out.push(previous ? Object.assign({}, previous, target, { stale: true }) : this.toRow(target, null));
+        });
+      }
+    }
+    this.rows = targets.map((target) => out.find((row) => this.targetKey(row) === this.targetKey(target))).filter((row) => row);
+    this.loading = false;
+    const now = new Date();
+    const time = `${('0' + now.getHours()).slice(-2)}:${('0' + now.getMinutes()).slice(-2)}`;
+    this.updatedText = hadFailure ? `${time} · 部分数据保留` : `${time} 更新`;
+    this.schedule();
+  },
+  targetKey(target) {
+    return [target.cityName, target.stationName, target.stationLat, target.stationLng, target.lineName, target.directionCode].join('|');
+  },
+  normalizeLine(value) {
+    return String(value || '').replace(/\s+/g, '').replace(/路$/, '').toUpperCase();
+  },
+  findLine(lines, target) {
+    const expected = this.normalizeLine(target.lineName);
+    return lines.find((line) => this.normalizeLine(line.lineName) === expected && String(line.upperOrDown || '1') === String(target.directionCode || '1')) ||
+      lines.find((line) => this.normalizeLine(line.lineName) === expected && String(line.to || '') === String(target.direction || '')) ||
+      lines.find((line) => this.normalizeLine(line.lineName) === expected) || null;
+  },
+  toRow(target, line) {
+    let status = '暂无预报';
+    if (line) status = String(line.neartext || (line.neartime ? `${line.neartime}分钟` : '') || line.neardis || status);
+    return Object.assign({}, target, { status, stale: false });
+  },
+  apiPost(target) {
+    const body = `CMD=115&CITYNAME=${encodeURIComponent(target.cityName || '')}&CITYKEY=${encodeURIComponent(target.cityKey || '')}&STATIONNAME=${encodeURIComponent(target.stationName || '')}&MYLAT=${encodeURIComponent(target.stationLat || '')}&MYLNG=${encodeURIComponent(target.stationLng || '')}&ALL=1`;
+    return new Promise((resolve, reject) => {
+      fetch.fetch({
+        url: API_URL,
+        method: 'POST',
+        header: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json, text/javascript, */*; q=0.01',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': 'https://h5.mygolbs.com/',
+          'Origin': 'https://h5.mygolbs.com'
+        },
+        data: body,
+        responseType: 'json',
+        success: (response) => resolve(response.data ? response.data : response),
+        fail: reject
+      });
+    });
+  },
+  openLine(item) {
+    router.push({
+      uri: '/pages/busDetail',
+      params: {
+        linename: item.lineName || '',
+        direction: String(item.directionCode || '1'),
+        stationorder: String(item.stationOrder || '0'),
+        stationname: item.stationName || '',
+        cityName: item.cityName || '',
+        cityKey: item.cityKey || ''
+      }
+    });
+  }
+}
+</script>
+
+<style>
+.page { width: 336px; height: 336px; background-color: #121921; flex-direction: column; overflow: hidden; }
+.nav { width: 336px; height: 76px; padding: 8px 18px; flex-direction: row; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.05); }
+.back,.refresh { width: 46px; height: 46px; border-radius: 23px; background-color: rgba(255,255,255,0.10); justify-content: center; align-items: center; }
+.refresh-loading { background-color: rgba(5,150,105,0.20); }
+.back-icon,.refresh-icon { width: 24px; height: 24px; object-fit: contain; }
+.title-wrap { width: 190px; height: 58px; flex-direction: column; align-items: center; justify-content: center; }
+.title { width: 190px; line-height: 32px; color: #ffffff; text-align: center; font-size: 24px; font-weight: bold; }
+.updated { width: 190px; line-height: 20px; color: #6ee7b7; text-align: center; font-size: 14px; }
+.state { width: 336px; height: 260px; justify-content: center; align-items: center; padding: 24px; }
+.state-text { width: 288px; color: #9ca3af; font-size: 18px; line-height: 28px; text-align: center; }
+.list { width: 336px; height: 260px; padding: 8px 18px 24px 18px; }
+.item { width: 300px; height: 132px; margin-bottom: 10px; }
+.card { width: 300px; height: 124px; padding: 12px 14px; border-radius: 10px; border: 2px solid rgba(52,211,153,0.12); background-color: rgba(255,255,255,0.07); flex-direction: column; }
+.line-row { width: 272px; height: 38px; flex-direction: row; align-items: center; justify-content: space-between; }
+.line { width: 128px; color: #ffffff; font-size: 24px; font-weight: bold; }
+.eta-wrap { width: 138px; height: 32px; border-radius: 6px; background-color: rgba(5,150,105,0.18); justify-content: center; align-items: center; }
+.eta { width: 130px; color: #6ee7b7; font-size: 17px; font-weight: bold; text-align: center; }
+.direction { margin-top: 6px; width: 272px; line-height: 28px; color: #ffffff; font-size: 17px; font-weight: bold; text-align: left; }
+.station { width: 272px; line-height: 26px; color: #60a5fa; font-size: 15px; text-align: left; }
+</style>

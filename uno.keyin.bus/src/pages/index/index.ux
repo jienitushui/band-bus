@@ -33,6 +33,11 @@
         <div class="round-btn direction-btn-home" @click="switchHomeLineDirection">
           <text static class="direction-btn-home-text">换向</text>
         </div>
+
+        <div class="realtime-watch-entry {{realtimeTargetCount > 0 ? 'realtime-watch-entry-active' : ''}}" @click="openRealtimeWatch">
+          <image static src="/common/images/icon_bus.png" class="realtime-watch-entry-icon" />
+          <text class="realtime-watch-entry-text">候车 {{realtimeTargetCount}}</text>
+        </div>
       </div>
 
       <div if="{{loadingBus}}" class="state-layer" @click="refreshLocation">
@@ -163,6 +168,7 @@ const VIBE_STATUS_META = {
 };
 /** 从站台列表选站返回首页后，暂缓自动定位，避免覆盖所选站台 */
 const SUPPRESS_AUTO_LOCATE_AFTER_STATION_MS = 35000;
+const REALTIME_TARGETS_CACHE_KEY = 'BUS_REALTIME_WATCH_TARGETS';
 
 export default {
   protected: {
@@ -225,6 +231,7 @@ export default {
     phoneLocFailureCountThisRequest: 0,
 
     lastWatchSessionNotifyAt: 0,
+    realtimeTargetCount: 0,
 
     watchDebugUiEnabled: false,
     lastNearbyFetchKey: '',
@@ -348,6 +355,7 @@ export default {
       this.loadCachedLocationAndRoutes();
     }
     this.setupInterconnect();
+    this.loadRealtimeTargetCount();
   },
 
   setupInterconnect() {
@@ -402,6 +410,16 @@ export default {
                 });
               },
               fail: () => prompt.showToast({ message: '换乘方案保存失败', duration: 1800 })
+            });
+            return;
+          }
+          if (o && o.type === 'realtime_watch_targets') {
+            const targets = Array.isArray(o.targets) ? o.targets : [];
+            storage.set({
+              key: REALTIME_TARGETS_CACHE_KEY,
+              value: JSON.stringify(o),
+              success: () => { this.realtimeTargetCount = targets.length; },
+              fail: () => {}
             });
             return;
           }
@@ -666,6 +684,25 @@ export default {
       },
       fail: () => {}
     });
+  },
+
+  loadRealtimeTargetCount() {
+    storage.get({
+      key: REALTIME_TARGETS_CACHE_KEY,
+      default: '',
+      success: (value) => {
+        try {
+          const raw = value && value.data !== undefined ? value.data : value;
+          const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          this.realtimeTargetCount = payload && Array.isArray(payload.targets) ? payload.targets.length : 0;
+        } catch (e) { this.realtimeTargetCount = 0; }
+      },
+      fail: () => {}
+    });
+  },
+
+  openRealtimeWatch() {
+    router.push({ uri: '/pages/realtimeWatch' });
   },
 
   /** 进入首页后等手机 interconnect 就绪再自动定位，避免冷启动时误判未连上直接走本机 GPS */
@@ -2361,7 +2398,7 @@ export default {
   position: absolute;
   left: 20px;
   top: 64px;
-  width: 296px;
+  width: 206px;
   height: 42px;
   border-radius: 21px;
   border: 2px solid rgba(249,115,22,0.22);
@@ -2373,25 +2410,59 @@ export default {
 }
 
 .station-bus-icon {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
 }
 
 .station-name {
-  width: 148px;
+  width: 88px;
   line-height: 38px;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: bold;
   color: #fb923c;
   text-align: center;
   text-overflow: ellipsis;
 }
 
-.home-city-name {
-  width: 66px;
+.realtime-watch-entry {
+  position: absolute;
+  left: 232px;
+  top: 64px;
+  width: 84px;
+  height: 42px;
+  border-radius: 21px;
+  border: 2px solid rgba(52,211,153,0.18);
+  background-color: rgba(255,255,255,0.06);
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+}
+
+.realtime-watch-entry-active {
+  background-color: rgba(5,150,105,0.20);
+  border: 2px solid rgba(52,211,153,0.34);
+}
+
+.realtime-watch-entry-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.realtime-watch-entry-text {
+  width: 58px;
   line-height: 38px;
-  font-size: 18px;
+  color: #6ee7b7;
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.home-city-name {
+  width: 42px;
+  line-height: 38px;
+  font-size: 16px;
   font-weight: bold;
   color: #ffffff;
   text-align: center;
@@ -2401,14 +2472,14 @@ export default {
 .home-city-divider {
   width: 1px;
   height: 22px;
-  margin-left: 4px;
-  margin-right: 8px;
+  margin-left: 2px;
+  margin-right: 4px;
   background-color: rgba(255,255,255,0.18);
 }
 
 .station-arrow {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   object-fit: contain;
 }
 

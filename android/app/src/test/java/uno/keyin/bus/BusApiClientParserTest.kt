@@ -8,6 +8,40 @@ import org.junit.Test
 
 class BusApiClientParserTest {
     @Test
+    fun parseStationPlatforms_sortsDeduplicatesAndAcceptsCoordinateAliases() {
+        val json = JSONObject(
+            """{
+                "status":1,
+                "info":[
+                    {"name":"真武庙","lat":"24.8797363370","lon":"118.6224370780","dis":101,"sameNum":2},
+                    {"name":"真武庙","latitude":"24.8793611925","lng":"118.6233539060","dis":0,"sameNum":2},
+                    {"name":"真武庙","latitude":"24.8793611925","lng":"118.6233539060","dis":0,"sameNum":2},
+                    {"name":"无效站台","lat":"","lon":"118.6"}
+                ]
+            }""",
+        )
+
+        val platforms = BusApiClient.parseStationPlatforms(json)
+
+        assertEquals(2, platforms.size)
+        assertEquals("24.8793611925", platforms[0].lat)
+        assertEquals("118.6233539060", platforms[0].lng)
+        assertEquals(0.0, platforms[0].distance, 0.0)
+        assertEquals(2, platforms[0].sameCount)
+        assertEquals("24.8797363370", platforms[1].lat)
+    }
+
+    @Test
+    fun parseStationPlatforms_acceptsNestedInfoAndRejectsFailedResponse() {
+        val nested = JSONObject(
+            """{"status":1,"data":{"info":[{"name":"站点","lat":"24.1","lon":"118.1"}]}}""",
+        )
+
+        assertEquals(1, BusApiClient.parseStationPlatforms(nested).size)
+        assertTrue(BusApiClient.parseStationPlatforms(JSONObject("""{"status":0}""")).isEmpty())
+    }
+
+    @Test
     fun parseSearchResults_readsLinesAndStations() {
         val json = JSONObject(
             """{
@@ -121,7 +155,7 @@ class BusApiClientParserTest {
                 "status":1,"routeName":"K606路","beginTime":"06:30","endTime":"19:10",
                 "commonts":"一票制1元","firstLast":[{"first":"06:35","last":"19:05"}],
                 "data":[
-                    {"stationOrder":1,"showName":"东宏路公交首末站"},
+                    {"stationOrder":1,"showName":"东宏路公交首末站","station_lat":24.8555,"station_lon":118.6622},
                     {"stationOrder":2,"stationName":"法坊路口"}
                 ]
             }""",
@@ -136,6 +170,8 @@ class BusApiClientParserTest {
         assertEquals("19:05", detail.lastTime)
         assertEquals("一票制1元", detail.comment)
         assertEquals(listOf(1, 2), detail.stations.map { it.order })
+        assertEquals("24.8555", detail.stations.first().lat)
+        assertEquals("118.6622", detail.stations.first().lng)
     }
 
     @Test

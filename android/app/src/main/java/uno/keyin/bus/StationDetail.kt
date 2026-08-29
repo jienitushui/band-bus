@@ -3,14 +3,23 @@ package uno.keyin.bus
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import uno.keyin.bus.databinding.ActivityStationDetailBinding
-import uno.keyin.bus.databinding.ItemSearchResultBinding
+import uno.keyin.bus.databinding.ItemStationLineBinding
 
-class StationLineAdapter(private val onClick: (BusLineUi) -> Unit) :
+class StationLineAdapter(
+    private val onClick: (BusLineUi) -> Unit,
+    private val isFollowing: (BusLineUi) -> Boolean,
+    private val onFollowClick: (BusLineUi) -> Boolean,
+    private val isFavorite: (BusLineUi) -> Boolean,
+    private val onFavoriteClick: (BusLineUi) -> Unit,
+) :
     RecyclerView.Adapter<StationLineAdapter.VH>() {
     companion object {
         private const val PAGE_SIZE = 5
@@ -33,29 +42,47 @@ class StationLineAdapter(private val onClick: (BusLineUi) -> Unit) :
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = VH(
-        ItemSearchResultBinding.inflate(LayoutInflater.from(parent.context), parent, false),
+        ItemStationLineBinding.inflate(LayoutInflater.from(parent.context), parent, false),
     )
 
     override fun getItemCount() = items.size
     override fun onBindViewHolder(holder: VH, position: Int) = holder.bind(items[position])
 
-    inner class VH(private val binding: ItemSearchResultBinding) : RecyclerView.ViewHolder(binding.root) {
+    inner class VH(private val binding: ItemStationLineBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: BusLineUi) {
-            binding.resultType.text = "线路"
-            binding.resultName.text = item.id
-            binding.resultDescription.text = buildList {
+            binding.lineName.text = item.id
+            binding.lineDescription.text = buildList {
+                item.platformLabel.takeIf { it.isNotBlank() }?.let(::add)
                 add("开往 ${item.direction}")
                 item.statusMain.takeIf { it.isNotBlank() }?.let(::add)
                 item.statusSub?.takeIf { it.isNotBlank() }?.let(::add)
             }.joinToString(" · ")
             binding.root.setOnClickListener { onClick(item) }
+            renderFollowing(isFollowing(item))
+            binding.followLine.setOnClickListener { renderFollowing(onFollowClick(item)) }
+            binding.favoriteLine.visibility = View.VISIBLE
+            binding.favoriteLine.setImageResource(if (isFavorite(item)) R.drawable.ic_bookmark_filled_24 else R.drawable.ic_bookmark_outline_24)
+            binding.favoriteLine.setOnClickListener { onFavoriteClick(item); bind(item) }
+        }
+
+        private fun renderFollowing(following: Boolean) {
+            binding.followLine.setImageResource(
+                if (following) R.drawable.ic_star_filled_24 else R.drawable.ic_star_outline_24,
+            )
+            binding.followLine.contentDescription = binding.root.context.getString(
+                if (following) R.string.action_stop_following else R.string.action_follow_realtime,
+            )
+            binding.followLine.imageTintList = ContextCompat.getColorStateList(
+                binding.root.context,
+                if (following) android.R.color.holo_orange_dark else android.R.color.darker_gray,
+            )
         }
     }
 }
 
 class StationDetailActivity : AppCompatActivity() {
     private lateinit var binding: ActivityStationDetailBinding
-    private val adapter = StationLineAdapter(::openLineDetail)
+    private val adapter = StationLineAdapter(::openLineDetail, ::isFollowing, ::toggleFollowing, ::isFavorite, ::toggleFavorite)
     private lateinit var city: CityConfig
     private var stationName = ""
     private var stationLat = ""
@@ -112,6 +139,47 @@ class StationDetailActivity : AppCompatActivity() {
             putExtra(LineDetailActivity.EXTRA_CURRENT_STATION_NAME, stationName)
             putExtra(LineDetailActivity.EXTRA_CURRENT_STATION_ORDER, line.stationOrder)
         })
+    }
+
+    private fun targetFor(line: BusLineUi) = RealtimeWatchTarget(
+        cityName = city.cityName,
+        cityKey = city.cityKey,
+        stationName = line.platformName.ifBlank { stationName },
+        stationLat = line.platformLat.ifBlank { stationLat },
+        stationLng = line.platformLng.ifBlank { stationLng },
+        platformLabel = line.platformLabel,
+        lineName = line.id,
+        direction = line.direction,
+        directionCode = line.directionCode,
+        stationOrder = line.stationOrder,
+    )
+
+    private fun isFollowing(line: BusLineUi): Boolean =
+        RealtimeWatchStore.isFollowing(this, targetFor(line))
+
+    private fun toggleFollowing(line: BusLineUi): Boolean {
+        val target = targetFor(line)
+        if (RealtimeWatchStore.isFollowing(this, target)) {
+            RealtimeWatchStore.remove(this, target)
+            LocationRelayService.pushRealtimeTargets(this)
+            Toast.makeText(this, R.string.realtime_removed, Toast.LENGTH_SHORT).show()
+            return false
+        }
+        val added = RealtimeWatchStore.add(this, target)
+        if (added) LocationRelayService.pushRealtimeTargets(this)
+        Toast.makeText(
+            this,
+            if (added) R.string.realtime_added else R.string.realtime_limit_reached,
+            Toast.LENGTH_SHORT,
+        ).show()
+        return added
+    }
+
+    private fun isFavorite(line: BusLineUi): Boolean = FavoriteBusStore.isFavorite(this, targetFor(line))
+
+    private fun toggleFavorite(line: BusLineUi) {
+        val added = FavoriteBusStore.toggle(this, targetFor(line))
+        Toast.makeText(this, if (added) R.string.favorite_added else R.string.favorite_removed, Toast.LENGTH_SHORT).show()
     }
 
     companion object {

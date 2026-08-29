@@ -12,6 +12,18 @@ data class BusLineUi(
     val statusSub: String? = null,
     val directionCode: String = "1",
     val stationOrder: Int = 0,
+    val platformName: String = "",
+    val platformLat: String = "",
+    val platformLng: String = "",
+    val platformLabel: String = "",
+)
+
+data class StationPlatform(
+    val name: String,
+    val lat: String,
+    val lng: String,
+    val distance: Double = 0.0,
+    val sameCount: Int = 0,
 )
 
 enum class StationLinesState { NOT_LOADED, LOADING, LOADED, ERROR }

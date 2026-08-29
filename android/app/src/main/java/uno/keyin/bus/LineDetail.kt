@@ -1,12 +1,15 @@
 package uno.keyin.bus
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.Gravity
 import androidx.core.content.ContextCompat
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -20,6 +23,8 @@ data class LineStation(
     val hasVehicle: Boolean = false,
     val vehicleArrived: Boolean = false,
     val vehicleText: String = "",
+    val lat: String = "",
+    val lng: String = "",
 )
 data class LineVehicle(val stationOrder: Int, val busNumber: String, val arrived: Boolean)
 data class LineRealtime(val vehicles: List<LineVehicle> = emptyList(), val etaText: String = "", val planTime: String = "")
@@ -34,7 +39,7 @@ data class LineDetail(
     val stations: List<LineStation>,
 )
 
-class LineStationAdapter : RecyclerView.Adapter<LineStationAdapter.VH>() {
+class LineStationAdapter(private val onClick: (LineStation) -> Unit = {}) : RecyclerView.Adapter<LineStationAdapter.VH>() {
     private var items: List<LineStation> = emptyList()
     fun submitList(value: List<LineStation>) { items = value; notifyDataSetChanged() }
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = VH(
@@ -42,7 +47,7 @@ class LineStationAdapter : RecyclerView.Adapter<LineStationAdapter.VH>() {
     )
     override fun getItemCount() = items.size
     override fun onBindViewHolder(holder: VH, position: Int) = holder.bind(items[position], position, items.lastIndex)
-    class VH(private val binding: ItemLineStationBinding) : RecyclerView.ViewHolder(binding.root) {
+    inner class VH(private val binding: ItemLineStationBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: LineStation, position: Int, lastIndex: Int) {
             binding.stationOrder.text = item.order.toString()
             binding.stationName.text = item.name
@@ -68,18 +73,36 @@ class LineStationAdapter : RecyclerView.Adapter<LineStationAdapter.VH>() {
                 else -> ""
             }
             binding.stationStatus.visibility = if (binding.stationStatus.text.isBlank()) View.GONE else View.VISIBLE
+            binding.root.setOnClickListener { onClick(item) }
         }
     }
 }
 
 class LineDetailActivity : AppCompatActivity() {
+    companion object {
+        const val EXTRA_LINE_NAME = "lineName"
+        const val EXTRA_DIRECTION = "direction"
+        const val EXTRA_CURRENT_STATION_NAME = "currentStationName"
+        const val EXTRA_CURRENT_STATION_ORDER = "currentStationOrder"
+        private const val REALTIME_REFRESH_MS = 15_000L
+        private const val REALTIME_STALE_MS = 45_000L
+    }
+
     private lateinit var binding: ActivityLineDetailBinding
-    private val adapter = LineStationAdapter()
+    private val adapter = LineStationAdapter(::showStationActions)
     private var lineName = ""
     private var city = CityConfig("泉州市", "泉州", "qz595803", 0L)
     private var direction = "1"
     private var currentStationName = ""
     private var currentStationOrder = 0
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var currentDetail: LineDetail? = null
+    private var realtimeLoading = false
+    private var resumed = false
+    private var lastRealtimeSuccessAt = 0L
+    private var detailGeneration = 0
+    private var realtimeGeneration = 0
+    private val realtimeRefresh = Runnable { currentDetail?.let(::loadRealtime) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,6 +117,7 @@ class LineDetailActivity : AppCompatActivity() {
         binding.btnDirection.setOnClickListener {
             direction = if (direction == "1") "2" else "1"
             currentStationOrder = 0
+            stopRealtimePolling()
             load()
         }
         binding.stationList.layoutManager = LinearLayoutManager(this)
@@ -101,14 +125,35 @@ class LineDetailActivity : AppCompatActivity() {
         load()
     }
 
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        currentDetail?.let(::loadRealtime)
+    }
+
+    override fun onPause() {
+        resumed = false
+        stopRealtimePolling()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        stopRealtimePolling()
+        super.onDestroy()
+    }
+
     private fun load() {
+        val generation = ++detailGeneration
+        currentDetail = null
         binding.loading.visibility = View.VISIBLE
         binding.stationList.visibility = View.GONE
         BusApiClient.executor.execute {
             val result = runCatching { BusApiClient.loadLineDetail(city, lineName, direction) }
             runOnUiThread {
+                if (generation != detailGeneration || isFinishing || isDestroyed) return@runOnUiThread
                 binding.loading.visibility = View.GONE
                 result.onSuccess { detail ->
+                    currentDetail = detail
                     binding.lineTitle.text = detail.lineName
                     binding.lineDirection.text = "${detail.from} → ${detail.to}"
                     binding.lineSchedule.text = "首班 ${detail.firstTime}    末班 ${detail.lastTime}"
@@ -127,10 +172,23 @@ class LineDetailActivity : AppCompatActivity() {
     }
 
     private fun loadRealtime(detail: LineDetail) {
+        if (realtimeLoading) return
+        realtimeLoading = true
+        val generation = ++realtimeGeneration
+        mainHandler.removeCallbacks(realtimeRefresh)
         val queryOrder = detail.stations.firstOrNull(::isCurrentStation)?.order ?: currentStationOrder
         BusApiClient.executor.execute {
-            val realtime = runCatching { BusApiClient.loadLineRealtime(city, detail.lineName, direction, queryOrder) }.getOrDefault(LineRealtime())
+            val result = runCatching { BusApiClient.loadLineRealtime(city, detail.lineName, direction, queryOrder) }
             runOnUiThread {
+                if (generation != realtimeGeneration || isFinishing || isDestroyed || currentDetail !== detail) return@runOnUiThread
+                realtimeLoading = false
+                val realtime = result.getOrNull()
+                if (realtime == null) {
+                    showRealtimeAge()
+                    scheduleRealtimeRefresh()
+                    return@runOnUiThread
+                }
+                lastRealtimeSuccessAt = System.currentTimeMillis()
                 binding.realtime.text = realtime.etaText.takeIf { it.isNotBlank() }?.let { "$it 到当前站" }
                     ?: realtime.planTime.takeIf { it.isNotBlank() }?.let { time -> "等待发车 · 预计 $time 发车" }.orEmpty()
                 binding.realtimePanel.visibility = if (binding.realtime.text.isNullOrBlank()) View.GONE else View.VISIBLE
@@ -147,8 +205,32 @@ class LineDetailActivity : AppCompatActivity() {
                 }
                 adapter.submitList(stations)
                 scrollToCurrent(stations)
+                scheduleRealtimeRefresh()
             }
         }
+    }
+
+    private fun showRealtimeAge() {
+        if (lastRealtimeSuccessAt > 0L &&
+            System.currentTimeMillis() - lastRealtimeSuccessAt >= REALTIME_STALE_MS
+        ) {
+            val current = binding.realtime.text?.toString().orEmpty()
+            binding.realtime.text = listOf(current, getString(R.string.realtime_data_stale))
+                .filter { it.isNotBlank() }.joinToString(" · ")
+            binding.realtimePanel.visibility = View.VISIBLE
+        }
+    }
+
+    private fun scheduleRealtimeRefresh() {
+        if (!resumed) return
+        mainHandler.removeCallbacks(realtimeRefresh)
+        mainHandler.postDelayed(realtimeRefresh, REALTIME_REFRESH_MS)
+    }
+
+    private fun stopRealtimePolling() {
+        mainHandler.removeCallbacks(realtimeRefresh)
+        realtimeGeneration += 1
+        realtimeLoading = false
     }
 
     private fun scrollToCurrent(stations: List<LineStation>) {
@@ -169,10 +251,32 @@ class LineDetailActivity : AppCompatActivity() {
         .replace(Regex("[（）()\\s]"), "")
         .removeSuffix("站")
 
-    companion object {
-        const val EXTRA_LINE_NAME = "lineName"
-        const val EXTRA_DIRECTION = "direction"
-        const val EXTRA_CURRENT_STATION_NAME = "currentStationName"
-        const val EXTRA_CURRENT_STATION_ORDER = "currentStationOrder"
+    private fun showStationActions(station: LineStation) {
+        val detail = currentDetail ?: return
+        val target = RealtimeWatchTarget(
+            cityName = city.cityName,
+            cityKey = city.cityKey,
+            stationName = station.name,
+            stationLat = station.lat,
+            stationLng = station.lng,
+            lineName = detail.lineName,
+            direction = detail.to,
+            directionCode = direction,
+            stationOrder = station.order,
+        )
+        AlertDialog.Builder(this)
+            .setTitle(station.name)
+            .setItems(arrayOf(getString(R.string.action_follow_realtime), getString(R.string.action_favorite))) { _, which ->
+                if (which == 0) {
+                    val added = RealtimeWatchStore.add(this, target)
+                    if (added) LocationRelayService.pushRealtimeTargets(this)
+                    Toast.makeText(this, if (added) R.string.realtime_added else R.string.realtime_limit_reached, Toast.LENGTH_SHORT).show()
+                } else {
+                    val added = FavoriteBusStore.toggle(this, target)
+                    Toast.makeText(this, if (added) R.string.favorite_added else R.string.favorite_removed, Toast.LENGTH_SHORT).show()
+                }
+            }
+            .show()
     }
+
 }

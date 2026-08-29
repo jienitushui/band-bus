@@ -2,6 +2,9 @@ package uno.keyin.bus
 
 import android.Manifest
 import android.app.ActivityManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -19,6 +22,7 @@ import androidx.activity.result.contract.ActivityResultContracts.StartActivityFo
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -34,12 +38,22 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val KEY_EXCLUDE_FROM_RECENTS = "exclude_from_recents"
+        private const val REALTIME_REFRESH_INTERVAL_MS = 15_000L
+        private const val REALTIME_RETRY_1_MS = 30_000L
+        private const val REALTIME_RETRY_2_MS = 60_000L
+        private const val ARRIVAL_CHANNEL_ID = "realtime_bus_arrival"
     }
 
     private lateinit var binding: ActivityMainBinding
     private val homeAdapter = BusHomeNearbyAdapter(::openNearbyStation)
     private val searchAdapter = BusSearchAdapter(::onSearchResultClicked)
     private val routeAdapter = TransferAdapter(::syncRoutePlan)
+    private val realtimeAdapter = RealtimeBusAdapter(::openRealtimeTarget, ::removeRealtimeTarget, ::toggleArrivalReminder)
+    private val favoriteAdapter = RealtimeBusAdapter(
+        ::openRealtimeTarget,
+        ::toggleFavoriteWaiting,
+        onFavoriteRemove = ::removeFavorite,
+    )
     private lateinit var routeSuggestionAdapter: TransferStationAdapter
     private var currentNodeId: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -59,6 +73,13 @@ class MainActivity : AppCompatActivity() {
     private var activeRouteField = 1
     private var searchRouteAfterLocationGrant = false
     private val routeSuggestionRunnable = Runnable { loadRouteSuggestions() }
+    private val realtimeRefreshRunnable = Runnable { refreshRealtimeTargets() }
+    private var realtimeRows: List<RealtimeBusRow> = emptyList()
+    private var realtimeRefreshGeneration = 0
+    private var realtimeRefreshInFlight = false
+    private var realtimeConsecutiveFailures = 0
+    private var activityResumed = false
+    private val lastArrivalNotification = mutableMapOf<String, String>()
 
     private val citySelectionLauncher = registerForActivityResult(StartActivityForResult()) {
         binding.inputSearch.setText("")
@@ -116,6 +137,19 @@ class MainActivity : AppCompatActivity() {
         binding.recyclerHomeStations.post { requestVisibleStationPreviews() }
         binding.recyclerSearchResults.layoutManager = LinearLayoutManager(this)
         binding.recyclerSearchResults.adapter = searchAdapter
+        binding.recyclerRealtimeBus.layoutManager = LinearLayoutManager(this)
+        binding.recyclerRealtimeBus.adapter = realtimeAdapter
+        binding.swipeRealtime.setColorSchemeResources(android.R.color.holo_blue_dark)
+        binding.swipeRealtime.setOnRefreshListener { refreshRealtimeTargets() }
+        binding.recyclerFavorites.layoutManager = LinearLayoutManager(this)
+        binding.recyclerFavorites.adapter = favoriteAdapter
+        binding.textRealtimeState.setOnClickListener {
+            if (RealtimeWatchStore.getForCity(this, CityConfigStore.get(this)).isEmpty()) {
+                selectHomeSubTab(HomeSubTab.Nearby)
+            } else {
+                refreshRealtimeTargets()
+            }
+        }
         setupTransferPanel()
         binding.clearSearchHistory.setOnClickListener {
             SearchHistoryStore.clear(this, CityConfigStore.get(this))
@@ -167,18 +201,21 @@ class MainActivity : AppCompatActivity() {
             when (item.itemId) {
                 R.id.nav_home -> {
                     showMainSection(isHome = true)
+                    if (homeSubTab == HomeSubTab.Realtime) startRealtimePolling()
                     true
                 }
                 R.id.nav_route -> {
+                    stopRealtimePolling()
                     showTransferSection()
                     true
                 }
                 R.id.nav_favorites -> {
-                    showMainSection(isHome = false)
-                    binding.textPlaceholderTab.setText(R.string.placeholder_favorites)
+                    stopRealtimePolling()
+                    showFavoritesSection()
                     true
                 }
                 R.id.nav_profile -> {
+                    stopRealtimePolling()
                     showMainSection(isHome = false)
                     binding.textPlaceholderTab.setText(R.string.placeholder_profile)
                     true
@@ -200,20 +237,29 @@ class MainActivity : AppCompatActivity() {
             binding.panelTransfer.visibility = View.GONE
             binding.recyclerHomeStations.visibility = View.GONE
             binding.recyclerSearchResults.visibility = View.GONE
+            binding.swipeRealtime.visibility = View.GONE
+            binding.recyclerFavorites.visibility = View.GONE
+            binding.textFavoritesState.visibility = View.GONE
+            binding.textRealtimeState.visibility = View.GONE
             binding.textHomeState.visibility = View.GONE
             return
         }
         binding.panelTransfer.visibility = View.GONE
-        binding.scrollPlaceholderTab.visibility =
-            if (homeSubTab == HomeSubTab.Realtime) View.VISIBLE else View.GONE
+        binding.recyclerFavorites.visibility = View.GONE
+        binding.textFavoritesState.visibility = View.GONE
+        binding.scrollPlaceholderTab.visibility = View.GONE
         binding.recyclerHomeStations.visibility =
             if (homeSubTab == HomeSubTab.Realtime || binding.inputSearch.text?.isNotBlank() == true) View.GONE else View.VISIBLE
         binding.recyclerSearchResults.visibility =
             if (homeSubTab == HomeSubTab.Realtime || binding.inputSearch.text?.isBlank() != false) View.GONE else View.VISIBLE
+        binding.swipeRealtime.visibility =
+            if (homeSubTab == HomeSubTab.Realtime && realtimeRows.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.textRealtimeState.visibility =
+            if (homeSubTab == HomeSubTab.Realtime && realtimeRows.isEmpty()) View.VISIBLE else View.GONE
         binding.textHomeState.visibility =
             if (homeSubTab == HomeSubTab.Nearby && homeStateText != null) View.VISIBLE else View.GONE
         if (homeSubTab == HomeSubTab.Realtime) {
-            binding.textPlaceholderTab.setText(R.string.home_realtime_empty)
+            renderRealtimeTargets(refresh = false)
         }
     }
 
@@ -223,6 +269,7 @@ class MainActivity : AppCompatActivity() {
         val dark = ContextCompat.getColor(this, R.color.tab_text_active)
         when (tab) {
             HomeSubTab.Nearby -> {
+                stopRealtimePolling()
                 binding.tabNearby.setTextColor(dark)
                 binding.tabNearby.setTypeface(null, Typeface.BOLD)
                 binding.tabRealtime.setTextColor(gray)
@@ -236,6 +283,7 @@ class MainActivity : AppCompatActivity() {
                 binding.tabRealtime.setTypeface(null, Typeface.BOLD)
                 binding.tabIndicator.visibility = View.INVISIBLE
                 binding.textHomeState.visibility = View.GONE
+                startRealtimePolling()
             }
         }
         if (binding.bottomNavigation.selectedItemId == R.id.nav_home) {
@@ -245,6 +293,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         applyRecentTasksExcludeFromRecents(
             getSharedPreferences(RelayUiPrefs.PREFS_NAME, MODE_PRIVATE)
                 .getBoolean(KEY_EXCLUDE_FROM_RECENTS, false),
@@ -252,12 +301,68 @@ class MainActivity : AppCompatActivity() {
         mainHandler.removeCallbacks(resumeRefreshRunnable)
         mainHandler.postDelayed(resumeRefreshRunnable, 450)
         applyCityAndRefresh(force = false)
+        renderRealtimeTargets(
+            refresh = homeSubTab == HomeSubTab.Realtime &&
+                binding.bottomNavigation.selectedItemId == R.id.nav_home,
+        )
+    }
+
+    private fun showFavoritesSection() {
+        binding.panelHomeHeader.visibility = View.GONE
+        binding.panelTransfer.visibility = View.GONE
+        binding.scrollPlaceholderTab.visibility = View.GONE
+        binding.recyclerHomeStations.visibility = View.GONE
+        binding.recyclerSearchResults.visibility = View.GONE
+        binding.swipeRealtime.visibility = View.GONE
+        binding.textRealtimeState.visibility = View.GONE
+        binding.textHomeState.visibility = View.GONE
+        val city = CityConfigStore.get(this)
+        val favorites = FavoriteBusStore.get(this, city)
+        val followed = RealtimeWatchStore.getForCity(this, city).associateBy { it.key }
+        favoriteAdapter.submitList(favorites.map { favorite ->
+            val active = followed.containsKey(favorite.key)
+            RealtimeBusRow(
+                target = favorite,
+                line = followed[favorite.key]?.let {
+                    BusLineUi(favorite.lineName, favorite.direction, getString(R.string.favorite_waiting_active))
+                } ?: BusLineUi(favorite.lineName, favorite.direction, getString(R.string.favorite_tap_to_wait)),
+                actionActive = active,
+            )
+        })
+        binding.recyclerFavorites.visibility = if (favorites.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.textFavoritesState.visibility = if (favorites.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun toggleFavoriteWaiting(target: RealtimeWatchTarget) {
+        if (RealtimeWatchStore.isFollowing(this, target)) {
+            RealtimeWatchStore.remove(this, target)
+            Toast.makeText(this, R.string.realtime_removed, Toast.LENGTH_SHORT).show()
+        } else if (RealtimeWatchStore.add(this, target)) {
+            Toast.makeText(this, R.string.realtime_added, Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, R.string.realtime_limit_reached, Toast.LENGTH_SHORT).show()
+        }
+        LocationRelayService.pushRealtimeTargets(this)
+        showFavoritesSection()
+    }
+
+    private fun removeFavorite(target: RealtimeWatchTarget) {
+        FavoriteBusStore.remove(this, target)
+        Toast.makeText(this, R.string.favorite_removed, Toast.LENGTH_SHORT).show()
+        showFavoritesSection()
+    }
+
+    override fun onPause() {
+        activityResumed = false
+        stopRealtimePolling()
+        super.onPause()
     }
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(resumeRefreshRunnable)
         mainHandler.removeCallbacks(searchRunnable)
         mainHandler.removeCallbacks(routeSuggestionRunnable)
+        stopRealtimePolling()
         super.onDestroy()
     }
 
@@ -311,6 +416,8 @@ class MainActivity : AppCompatActivity() {
         binding.recyclerHomeStations.visibility = View.GONE
         binding.recyclerSearchResults.visibility = View.GONE
         binding.textHomeState.visibility = View.GONE
+        binding.recyclerFavorites.visibility = View.GONE
+        binding.textFavoritesState.visibility = View.GONE
         binding.panelTransfer.visibility = View.VISIBLE
     }
 
@@ -648,16 +755,210 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun renderRealtimeTargets(refresh: Boolean) {
+        val city = CityConfigStore.get(this)
+        val targets = RealtimeWatchStore.getForCity(this, city)
+        val previous = realtimeRows.associateBy { it.target.key }
+        realtimeRows = targets.map { target ->
+            previous[target.key]?.copy(target = target) ?: RealtimeBusRow(target)
+        }
+        realtimeAdapter.submitList(realtimeRows)
+        val showing = homeSubTab == HomeSubTab.Realtime &&
+            binding.bottomNavigation.selectedItemId == R.id.nav_home
+        binding.swipeRealtime.visibility =
+            if (showing && realtimeRows.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.textRealtimeState.visibility =
+            if (showing && realtimeRows.isEmpty()) View.VISIBLE else View.GONE
+        if (realtimeRows.isEmpty()) {
+            binding.textRealtimeState.setText(R.string.home_realtime_empty)
+        }
+        if (refresh && targets.isNotEmpty()) refreshRealtimeTargets()
+    }
+
+    private fun startRealtimePolling() {
+        if (!activityResumed || homeSubTab != HomeSubTab.Realtime ||
+            binding.bottomNavigation.selectedItemId != R.id.nav_home
+        ) return
+        mainHandler.removeCallbacks(realtimeRefreshRunnable)
+        renderRealtimeTargets(refresh = !realtimeRefreshInFlight)
+    }
+
+    private fun stopRealtimePolling() {
+        mainHandler.removeCallbacks(realtimeRefreshRunnable)
+        if (::binding.isInitialized) binding.swipeRealtime.isRefreshing = false
+        realtimeRefreshGeneration += 1
+        realtimeRefreshInFlight = false
+    }
+
+    private fun refreshRealtimeTargets() {
+        if (realtimeRefreshInFlight) return
+        val city = CityConfigStore.get(this)
+        val targets = RealtimeWatchStore.getForCity(this, city)
+        if (targets.isEmpty()) {
+            binding.swipeRealtime.isRefreshing = false
+            renderRealtimeTargets(refresh = false)
+            return
+        }
+        realtimeRefreshInFlight = true
+        val generation = ++realtimeRefreshGeneration
+        BusApiClient.executor.execute {
+            val values = mutableMapOf<String, Pair<BusLineUi?, Boolean>>()
+            targets.groupBy { it.stationKey }.values.forEach { stationTargets ->
+                val station = stationTargets.first()
+                val result = runCatching {
+                    BusApiClient.loadStationLines(
+                        city,
+                        station.stationName,
+                        station.stationLat,
+                        station.stationLng,
+                    )
+                }
+                stationTargets.forEach { target ->
+                    val line = result.getOrNull()?.let { lines -> RealtimeLineMatcher.find(lines, target) }
+                    values[target.key] = line to result.isFailure
+                }
+            }
+            mainHandler.post {
+                if (generation != realtimeRefreshGeneration || city.version != CityConfigStore.get(this).version) {
+                    return@post
+                }
+                realtimeRefreshInFlight = false
+                binding.swipeRealtime.isRefreshing = false
+                val allFailed = values.isNotEmpty() && values.values.all { it.second }
+                realtimeConsecutiveFailures = if (allFailed) realtimeConsecutiveFailures + 1 else 0
+                val now = System.currentTimeMillis()
+                val previous = realtimeRows.associateBy { it.target.key }
+                realtimeRows = targets.map { target ->
+                    val (line, failed) = values[target.key] ?: (null to true)
+                    if (failed) {
+                        previous[target.key]?.copy(target = target, refreshFailed = true)
+                            ?: RealtimeBusRow(target, refreshFailed = true)
+                    } else {
+                        RealtimeBusRow(
+                            target = target,
+                            line = line ?: BusLineUi(
+                                id = target.lineName,
+                                direction = target.direction,
+                                statusMain = getString(R.string.nearby_lines_empty),
+                                directionCode = target.directionCode,
+                                stationOrder = target.stationOrder,
+                            ),
+                            updatedAt = now,
+                        )
+                    }
+                }
+                realtimeAdapter.submitList(realtimeRows)
+                notifyArrivingTargets(realtimeRows)
+                binding.swipeRealtime.visibility = View.VISIBLE
+                binding.textRealtimeState.visibility = View.GONE
+                if (activityResumed && homeSubTab == HomeSubTab.Realtime &&
+                    binding.bottomNavigation.selectedItemId == R.id.nav_home
+                ) {
+                    val delay = when {
+                        realtimeConsecutiveFailures >= 2 -> REALTIME_RETRY_2_MS
+                        realtimeConsecutiveFailures == 1 -> REALTIME_RETRY_1_MS
+                        else -> REALTIME_REFRESH_INTERVAL_MS
+                    }
+                    mainHandler.postDelayed(realtimeRefreshRunnable, delay)
+                }
+            }
+        }
+    }
+
+    private fun openRealtimeTarget(target: RealtimeWatchTarget) {
+        startActivity(Intent(this, LineDetailActivity::class.java).apply {
+            putExtra(LineDetailActivity.EXTRA_LINE_NAME, target.lineName)
+            putExtra(LineDetailActivity.EXTRA_DIRECTION, target.directionCode)
+            putExtra(LineDetailActivity.EXTRA_CURRENT_STATION_NAME, target.stationName)
+            putExtra(LineDetailActivity.EXTRA_CURRENT_STATION_ORDER, target.stationOrder)
+        })
+    }
+
+    private fun removeRealtimeTarget(target: RealtimeWatchTarget) {
+        stopRealtimePolling()
+        RealtimeWatchStore.remove(this, target)
+        LocationRelayService.pushRealtimeTargets(this)
+        Toast.makeText(this, R.string.realtime_removed, Toast.LENGTH_SHORT).show()
+        renderRealtimeTargets(refresh = true)
+    }
+
+    private fun toggleArrivalReminder(target: RealtimeWatchTarget) {
+        stopRealtimePolling()
+        val enabled = !target.reminderEnabled
+        RealtimeWatchStore.setReminder(this, target, enabled)
+        Toast.makeText(
+            this,
+            if (enabled) R.string.arrival_reminder_on else R.string.arrival_reminder_off,
+            Toast.LENGTH_SHORT,
+        ).show()
+        LocationRelayService.pushRealtimeTargets(this)
+        renderRealtimeTargets(refresh = false)
+        startRealtimePolling()
+    }
+
+    private fun notifyArrivingTargets(rows: List<RealtimeBusRow>) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        rows.filter { it.target.reminderEnabled && it.line != null }.forEach { row ->
+            val status = row.line?.statusMain.orEmpty()
+            if (!isArrivingStatus(status)) {
+                lastArrivalNotification.remove(row.target.key)
+                return@forEach
+            }
+            if (lastArrivalNotification[row.target.key] == status) return@forEach
+            lastArrivalNotification[row.target.key] = status
+            val manager = getSystemService(NotificationManager::class.java) ?: return@forEach
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                manager.createNotificationChannel(
+                    NotificationChannel(
+                        ARRIVAL_CHANNEL_ID,
+                        getString(R.string.action_arrival_reminder),
+                        NotificationManager.IMPORTANCE_HIGH,
+                    ),
+                )
+            }
+            val launch = PendingIntent.getActivity(
+                this,
+                row.target.key.hashCode(),
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            manager.notify(
+                row.target.key.hashCode(),
+                NotificationCompat.Builder(this, ARRIVAL_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_bus)
+                    .setContentTitle(getString(R.string.arrival_notification_title, row.target.lineName))
+                    .setContentText(getString(R.string.arrival_notification_text, row.target.stationName, status))
+                    .setContentIntent(launch)
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .build(),
+            )
+        }
+    }
+
+    private fun isArrivingStatus(status: String): Boolean {
+        if (status.contains("即将") || status.contains("到站") || status.contains("进站")) return true
+        val stops = Regex("(\\d+)\\s*站").find(status)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        return stops != null && stops <= 2
+    }
+
     private fun applyCityAndRefresh(force: Boolean) {
         val city = CityConfigStore.get(this)
         binding.textCityName.text = city.displayName
         if (!force && loadedCityVersion == city.version) return
         if (loadedCityVersion != city.version) {
+            stopRealtimePolling()
             nearbyStations = emptyList()
             nearbyStateText = null
             hasNearbySnapshot = false
         }
         loadedCityVersion = city.version
+        renderRealtimeTargets(
+            refresh = activityResumed && homeSubTab == HomeSubTab.Realtime &&
+                binding.bottomNavigation.selectedItemId == R.id.nav_home,
+        )
         renderSearchHistory()
         homeAdapter.submitList(emptyList())
         if (!PhoneLocationHelper.hasLocationPermission(this)) {
