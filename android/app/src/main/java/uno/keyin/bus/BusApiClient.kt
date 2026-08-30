@@ -1,6 +1,8 @@
 package uno.keyin.bus
 
+import android.util.Log
 import org.json.JSONObject
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -12,6 +14,7 @@ import kotlin.math.abs
 object BusApiClient {
     private const val API_URL = "https://h5.mygolbs.com/ApiData.do"
     private const val SEARCH_CACHE_TTL_MS = 60_000L
+    private const val RETRY_START_BUDGET_MS = 2_500L
     val executor: ExecutorService = Executors.newFixedThreadPool(4)
     private val searchCache = ConcurrentHashMap<String, SearchCacheEntry>()
 
@@ -493,13 +496,16 @@ object BusApiClient {
     }
 
     private fun post(params: Map<String, String>): JSONObject {
+        val startedAt = System.nanoTime()
+        val command = params["CMD"].orEmpty().ifBlank { "?" }
+        var outcome = "error"
         val body = params.entries.joinToString("&") { (key, value) ->
             "${encode(key)}=${encode(value)}"
         }
         val connection = (URL(API_URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = 10_000
-            readTimeout = 15_000
+            connectTimeout = 6_000
+            readTimeout = 8_000
             doOutput = true
             setRequestProperty("Accept", "application/json, text/javascript, */*; q=0.01")
             setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
@@ -512,17 +518,24 @@ object BusApiClient {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val text = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            check(code in 200..299) { "HTTP $code" }
-            JSONObject(text)
+            if (code !in 200..299) throw IOException("HTTP $code")
+            JSONObject(text).also { outcome = "ok" }
         } finally {
             connection.disconnect()
+            val durationMs = (System.nanoTime() - startedAt) / 1_000_000
+            Log.i("BusPerf", "stage=api cmd=$command durationMs=$durationMs result=$outcome")
         }
     }
 
-    private fun postWithRetry(params: Map<String, String>): JSONObject = runCatching {
-        post(params)
-    }.getOrElse {
-        post(params)
+    private fun postWithRetry(params: Map<String, String>): JSONObject {
+        val startedAt = System.nanoTime()
+        return try {
+            post(params)
+        } catch (first: IOException) {
+            val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+            if (elapsedMs >= RETRY_START_BUDGET_MS) throw first
+            post(params)
+        }
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())

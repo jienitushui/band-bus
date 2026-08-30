@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.graphics.Rect
+import android.location.Location
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -42,6 +43,8 @@ class MainActivity : AppCompatActivity() {
         private const val REALTIME_RETRY_1_MS = 30_000L
         private const val REALTIME_RETRY_2_MS = 60_000L
         private const val ARRIVAL_CHANNEL_ID = "realtime_bus_arrival"
+        private const val HOME_LOCATION_CACHE_MAX_AGE_MS = 15 * 60 * 1000L
+        private const val HOME_LOCATION_REFRESH_DISTANCE_M = 150f
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -376,6 +379,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        homeLoadGeneration += 1
+        searchGeneration += 1
+        routeSuggestionGeneration += 1
         mainHandler.removeCallbacks(resumeRefreshRunnable)
         mainHandler.removeCallbacks(searchRunnable)
         mainHandler.removeCallbacks(routeSuggestionRunnable)
@@ -639,7 +645,7 @@ class MainActivity : AppCompatActivity() {
         val city = CityConfigStore.get(this)
         val generation = homeLoadGeneration
         updateNearbyStation(station.copy(linesState = StationLinesState.LOADING))
-        StationLinesRepository.load(city, station.name, station.lat, station.lng) { result ->
+        StationLinesRepository.load(this, city, station.name, station.lat, station.lng) { result ->
             mainHandler.post {
                 if (generation != homeLoadGeneration || CityConfigStore.get(this).version != city.version) {
                     return@post
@@ -667,6 +673,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateNearbyStation(station: StationUi) {
         nearbyStations = nearbyStations.map { if (it.key == station.key) station else it }
         homeAdapter.updateStation(station)
+        NearbySnapshotStore.save(this, CityConfigStore.get(this), nearbyStations)
     }
 
     private fun openNearbyStation(station: StationUi) {
@@ -982,8 +989,15 @@ class MainActivity : AppCompatActivity() {
         )
         renderSearchHistory()
         homeAdapter.submitList(emptyList())
+        NearbySnapshotStore.load(this, city)?.let { cached ->
+            nearbyStations = cached
+            nearbyStateText = null
+            hasNearbySnapshot = true
+            homeAdapter.submitList(cached)
+            binding.recyclerHomeStations.post { requestVisibleStationPreviews() }
+        }
         if (!PhoneLocationHelper.hasLocationPermission(this)) {
-            showHomeState(getString(R.string.toast_requesting_location))
+            showHomeState(if (hasNearbySnapshot) null else getString(R.string.toast_requesting_location))
             return
         }
         loadNearbyForCity(city)
@@ -992,39 +1006,69 @@ class MainActivity : AppCompatActivity() {
     private fun loadNearbyForCity(city: CityConfig) {
         homeLoadGeneration += 1
         val generation = homeLoadGeneration
-        showHomeState(getString(R.string.home_nearby_loading))
-        PhoneLocationHelper.fetchBestLocation(this, highAccuracy = true) { location ->
-            if (location == null) {
-                mainHandler.post {
-                    if (generation == homeLoadGeneration) {
-                        showHomeState(getString(R.string.toast_location_failed))
-                    }
-                }
-                return@fetchBestLocation
-            }
-            val converted = uno.keyin.bus.location.Wgs84ToGcj02.convert(
-                location.latitude,
-                location.longitude,
-            )
-            BusApiClient.executor.execute {
-                val result = runCatching {
-                    BusApiClient.loadNearby(city, converted.first, converted.second)
+        val cachedLocation = PhoneLocationCache.peekForQuickReply(
+            this,
+            HOME_LOCATION_CACHE_MAX_AGE_MS,
+            HOME_LOCATION_CACHE_MAX_AGE_MS,
+        )
+        showHomeState(if (hasNearbySnapshot) null else getString(R.string.home_nearby_loading))
+        if (cachedLocation != null) {
+            loadNearbyAt(city, cachedLocation, generation)
+            PhoneLocationHelper.fetchBestLocation(this, highAccuracy = false) { fresh ->
+                if (fresh == null || cachedLocation.distanceTo(fresh) < HOME_LOCATION_REFRESH_DISTANCE_M) {
+                    return@fetchBestLocation
                 }
                 mainHandler.post {
                     if (generation != homeLoadGeneration || CityConfigStore.get(this).version != city.version) {
                         return@post
                     }
-                    result.onSuccess { stations ->
-                        nearbyStations = stations
-                        nearbyStateText = if (stations.isEmpty()) getString(R.string.home_nearby_empty) else null
-                        hasNearbySnapshot = true
-                        homeAdapter.submitList(stations)
-                        binding.recyclerHomeStations.post { requestVisibleStationPreviews() }
-                        showHomeState(nearbyStateText)
-                    }.onFailure {
+                    val refreshGeneration = ++homeLoadGeneration
+                    loadNearbyAt(city, fresh, refreshGeneration)
+                }
+            }
+            return
+        }
+        PhoneLocationHelper.fetchBestLocation(this, highAccuracy = false) { location ->
+            if (location == null) {
+                mainHandler.post {
+                    if (generation == homeLoadGeneration) {
+                        showHomeState(if (hasNearbySnapshot) null else getString(R.string.toast_location_failed))
+                    }
+                }
+                return@fetchBestLocation
+            }
+            loadNearbyAt(city, location, generation)
+        }
+    }
+
+    private fun loadNearbyAt(city: CityConfig, location: Location, generation: Int) {
+        val startedAt = System.currentTimeMillis()
+        val converted = uno.keyin.bus.location.Wgs84ToGcj02.convert(
+            location.latitude,
+            location.longitude,
+        )
+        BusApiClient.executor.execute {
+            val result = runCatching {
+                BusApiClient.loadNearby(city, converted.first, converted.second)
+            }
+            mainHandler.post {
+                if (generation != homeLoadGeneration || CityConfigStore.get(this).version != city.version) {
+                    return@post
+                }
+                result.onSuccess { stations ->
+                    android.util.Log.i("BusPerf", "stage=nearby_total durationMs=${System.currentTimeMillis() - startedAt} result=ok")
+                    nearbyStations = stations
+                    nearbyStateText = if (stations.isEmpty()) getString(R.string.home_nearby_empty) else null
+                    hasNearbySnapshot = true
+                    homeAdapter.submitList(stations)
+                    NearbySnapshotStore.save(this, city, stations)
+                    binding.recyclerHomeStations.post { requestVisibleStationPreviews() }
+                    showHomeState(nearbyStateText)
+                }.onFailure {
+                    android.util.Log.w("BusPerf", "stage=nearby_total durationMs=${System.currentTimeMillis() - startedAt} result=error", it)
+                    if (!hasNearbySnapshot) {
                         nearbyStations = emptyList()
                         nearbyStateText = getString(R.string.home_nearby_failed)
-                        hasNearbySnapshot = true
                         homeAdapter.submitList(emptyList())
                         showHomeState(nearbyStateText)
                     }
@@ -1066,6 +1110,7 @@ class MainActivity : AppCompatActivity() {
         if (!PhoneLocationHelper.hasLocationPermission(this)) return
 
         val quick = PhoneLocationCache.peekForQuickReply(
+            this,
             PhoneLocationCache.QUICK_REPLY_MAX_WALL_MS,
             PhoneLocationCache.QUICK_REPLY_MAX_FIX_AGE_MS,
         )

@@ -1,5 +1,6 @@
 package uno.keyin.bus.location
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -29,7 +30,8 @@ object PhoneLocationHelper {
      * 单次 [getCurrentLocation] 在弱信号/室内可能长时间不返回；超时后取消并回退 last/fallback，
      * 避免界面长时间停在「正在获取」。
      */
-    private const val FUSED_FRESH_LOCATION_TIMEOUT_MS = 15_000L
+    private const val FUSED_HIGH_ACCURACY_TIMEOUT_MS = 8_000L
+    private const val FUSED_BALANCED_TIMEOUT_MS = 4_000L
 
     fun hasLocationPermission(context: Context): Boolean {
         val fine = ContextCompat.checkSelfPermission(
@@ -52,16 +54,17 @@ object PhoneLocationHelper {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    @SuppressLint("MissingPermission")
     fun fetchBestLocation(
         context: Context,
         highAccuracy: Boolean = true,
         onResult: (Location?) -> Unit,
     ) {
+        val appCtx = context.applicationContext
         val wrapped: (Location?) -> Unit = { loc ->
-            if (loc != null) PhoneLocationCache.put(loc)
+            if (loc != null) PhoneLocationCache.put(appCtx, loc)
             onResult(loc)
         }
-        val appCtx = context.applicationContext
         if (!hasLocationPermission(appCtx)) {
             wrapped(null)
             return
@@ -84,6 +87,7 @@ object PhoneLocationHelper {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun requestFusedCurrentThenFallback(
         fused: FusedLocationProviderClient,
         appCtx: Context,
@@ -120,7 +124,8 @@ object PhoneLocationHelper {
             handler.removeCallbacks(timeoutRunnable)
             onResult(loc)
         }
-        handler.postDelayed(timeoutRunnable, FUSED_FRESH_LOCATION_TIMEOUT_MS)
+        val timeoutMs = if (highAccuracy) FUSED_HIGH_ACCURACY_TIMEOUT_MS else FUSED_BALANCED_TIMEOUT_MS
+        handler.postDelayed(timeoutRunnable, timeoutMs)
         val priority = if (highAccuracy) {
             Priority.PRIORITY_HIGH_ACCURACY
         } else {

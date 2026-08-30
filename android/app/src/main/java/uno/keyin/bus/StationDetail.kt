@@ -113,7 +113,7 @@ class StationDetailActivity : AppCompatActivity() {
     private fun loadStationLines() {
         binding.state.isClickable = false
         binding.state.setText(R.string.station_detail_loading)
-        StationLinesRepository.load(city, stationName, stationLat, stationLng) { result ->
+        StationLinesRepository.load(this, city, stationName, stationLat, stationLng) { result ->
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { lines ->

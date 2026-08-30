@@ -126,12 +126,14 @@ const DEFAULT_CITY_DISPLAY_NAME = '泉州';
 const DEFAULT_CITY_KEY = 'qz595803';
 const CITY_CONFIG_CACHE_KEY = 'BUS_CURRENT_CITY';
 const LOCATION_CACHE_KEY = 'BUS_LAST_LOCATION';
+const HOME_SNAPSHOT_CACHE_KEY = 'BUS_HOME_SNAPSHOT_V1';
+const HOME_SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
 const DESIGN_WIDTH = 336;
 const DEFAULT_PAGE_HEIGHT = 336;
 const HOME_LIST_TOP = 126;
 const BUS_SCROLLBAR_TRACK_HEIGHT = 132;
 const BUS_SCROLLBAR_MIN_HEIGHT = 34;
-const BUS_LOAD_TIMEOUT = 6500;
+const BUS_LOAD_TIMEOUT = 5000;
 const BUS_CARD_ITEM_HEIGHT = 138;
 const SCROLLBAR_HIDE_DELAY = 520;
 const LOCATION_TOAST_INTERVAL = 1800;
@@ -151,7 +153,7 @@ const PHONE_LOC_RETRY_GAP_MS = 350;
 /** 单次定位流程总守护上限，避免长时间卡在「正在获取定位」 */
 const LOCATION_SESSION_GUARD_MAX_MS = 92000;
 const AUTO_LOCATE_INTERCONNECT_POLL_MS = 450;
-const AUTO_LOCATE_INTERCONNECT_MAX_RETRIES = 42;
+const AUTO_LOCATE_INTERCONNECT_MAX_RETRIES = 7;
 /** 附近站点 CMD106 与首屏线路：相同经纬度下最短间隔（毫秒），force 可跳过 */
 const NEARBY_FETCH_THROTTLE_MS = 12000;
 const BUS_WATCH_DEBUG_UI_KEY = 'BUS_WATCH_DEBUG_UI';
@@ -169,6 +171,8 @@ const VIBE_STATUS_META = {
 /** 从站台列表选站返回首页后，暂缓自动定位，避免覆盖所选站台 */
 const SUPPRESS_AUTO_LOCATE_AFTER_STATION_MS = 35000;
 const REALTIME_TARGETS_CACHE_KEY = 'BUS_REALTIME_WATCH_TARGETS';
+const HOME_REALTIME_ENRICH_MAX_LINES = 2;
+const NEARBY_PRELOAD_DELAY_MS = 1200;
 
 export default {
   protected: {
@@ -236,6 +240,7 @@ export default {
     watchDebugUiEnabled: false,
     lastNearbyFetchKey: '',
     lastNearbyFetchAt: 0,
+    nearbyPreloadTimer: null,
     suppressAutoLocateUntil: 0,
     /** 首页 CMD115 与详情一致：1 上行 / 2 下行，换向按钮切换 */
     lineDirection: '1',
@@ -834,6 +839,9 @@ export default {
   },
 
   onDestroy() {
+    this.busRequestId += 1;
+    this.homeDirectionRequestId += 1;
+    this.isBusLoading = false;
     this.setVibeKeepScreenOn(false);
     this.stopVibePolling();
     if (this.timeTapTimer) {
@@ -860,6 +868,10 @@ export default {
     if (this.busScrollbarTimer) {
       clearTimeout(this.busScrollbarTimer);
       this.busScrollbarTimer = null;
+    }
+    if (this.nearbyPreloadTimer) {
+      clearTimeout(this.nearbyPreloadTimer);
+      this.nearbyPreloadTimer = null;
     }
     if (this.locationDebugTimer) {
       clearTimeout(this.locationDebugTimer);
@@ -1116,21 +1128,72 @@ export default {
     if (this.homeViewMode === 'vibe') {
       return;
     }
+    this.loadHomeSnapshot(() => {
+      storage.get({
+        key: LOCATION_CACHE_KEY,
+        default: '',
+        success: (value) => {
+          const cached = this.parseCachedLocation(value);
+          if (cached) {
+            this.myLat = cached.lat;
+            this.myLng = cached.lng;
+            this.showLocationStatus('缓存数据已显示，正在更新');
+          }
+          this.loadBusRoutes();
+        },
+        fail: () => {
+          this.loadBusRoutes();
+        }
+      });
+    });
+  },
+
+  loadHomeSnapshot(done) {
     storage.get({
-      key: LOCATION_CACHE_KEY,
+      key: HOME_SNAPSHOT_CACHE_KEY,
       default: '',
       success: (value) => {
-        const cached = this.parseCachedLocation(value);
-        if (cached) {
-          this.myLat = cached.lat;
-          this.myLng = cached.lng;
-          this.showLocationStatus('使用缓存定位加载');
+        try {
+          const raw = value && value.data !== undefined ? value.data : value;
+          const snapshot = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          const savedAt = Number(snapshot && snapshot.savedAt);
+          const sameCity = snapshot && String(snapshot.cityName || '') === String(this.currentCityName || '') &&
+            String(snapshot.cityKey || '') === String(this.currentCityKey || '');
+          const freshEnough = savedAt > 0 && Date.now() - savedAt <= HOME_SNAPSHOT_MAX_AGE_MS;
+          if (sameCity && freshEnough && Array.isArray(snapshot.busList) && snapshot.busList.length) {
+            this.stationName = String(snapshot.stationName || '附近站点');
+            this.lineDirection = String(snapshot.lineDirection) === '2' ? '2' : '1';
+            this.nearbyStations = Array.isArray(snapshot.nearbyStations) ? snapshot.nearbyStations : [];
+            this.applyBusList(snapshot.busList);
+            this.loadingBus = false;
+            this.pushInterconnectFlowLog(`首页缓存命中 age=${Date.now() - savedAt}ms`);
+          }
+        } catch (e) {
+          console.warn('home snapshot parse failed', e);
         }
-        this.loadBusRoutes();
+        if (done) done();
       },
       fail: () => {
-        this.loadBusRoutes();
+        if (done) done();
       }
+    });
+  },
+
+  saveHomeSnapshot() {
+    if (!Array.isArray(this.busList) || !this.busList.length) return;
+    const snapshot = {
+      savedAt: Date.now(),
+      cityName: this.currentCityName,
+      cityKey: this.currentCityKey,
+      stationName: this.stationName,
+      lineDirection: this.lineDirection,
+      nearbyStations: Array.isArray(this.nearbyStations) ? this.nearbyStations.slice(0, 4) : [],
+      busList: this.busList
+    };
+    storage.set({
+      key: HOME_SNAPSHOT_CACHE_KEY,
+      value: JSON.stringify(snapshot),
+      fail: () => {}
     });
   },
 
@@ -1219,36 +1282,35 @@ export default {
         return;
       }
 
-      this.nearbyStations = stations;
-      if (!hadList) {
-        this.loadingText = '正在解析站台…';
-      }
-      await Promise.all(stations.slice(0, 4).map((st) => this.hydrateStation209(st)));
-      if (requestId !== this.busRequestId) return;
-
       const preferName = options.preferNearestStation
         ? ''
         : (options.preferStationName != null ? options.preferStationName : this.stationName);
       const firstStation = this.pickPrimaryStation(stations, preferName);
+      this.nearbyStations = stations;
       this.stationName = firstStation.name || this.stationName;
       if (options.preferNearestStation) {
         this.lineDirection = '1';
       }
+      if (!hadList) {
+        this.loadingText = '正在解析站台…';
+      }
+      await this.hydrateStation209(firstStation);
+      if (requestId !== this.busRequestId) return;
       if (!hadList) {
         this.loadingText = '正在加载线路…';
       }
 
       const lines = await this.fetchStationLines(firstStation);
       if (requestId !== this.busRequestId) return;
-      const linesForUi = lines.length ? await this.enrichHomeLinesWith104(lines) : [];
-      if (requestId !== this.busRequestId) return;
-      if (linesForUi.length > 0) {
-        this.applyBusList(linesForUi);
+      if (lines.length > 0) {
+        this.applyBusList(lines);
       } else if (!hadList) {
         this.applyBusList([]);
         prompt.showToast({ message: '该站点暂无到站预报', duration: 2000 });
       }
-      this.nearbyStations = this.applyStationLines(stations, firstStation, linesForUi);
+      this.nearbyStations = this.applyStationLines(stations, firstStation, lines);
+      this.saveHomeSnapshot();
+      this.refreshMissingHomeRealtime(lines, firstStation, requestId);
       this.loadNearbyStationLines(stations, requestId);
       this.lastNearbyFetchKey = geoKey;
       this.lastNearbyFetchAt = Date.now();
@@ -1463,6 +1525,31 @@ export default {
     return Promise.all(lines.map((it) => this.enrichOneHomeLineWith104(it)));
   },
 
+  hasRealtimeHint(item) {
+    if (!item) return false;
+    return !![item.neartext, item.neartime, item.neardis, item.nexttext, item.planTime]
+      .filter((value) => value !== undefined && value !== null && String(value).trim())
+      .length;
+  },
+
+  refreshMissingHomeRealtime(lines, station, requestId) {
+    if (!Array.isArray(lines) || !lines.length) return;
+    const jobs = [];
+    lines.forEach((item, index) => {
+      if (jobs.length >= HOME_REALTIME_ENRICH_MAX_LINES || this.hasRealtimeHint(item)) return;
+      jobs.push(this.enrichOneHomeLineWith104(item).then((value) => ({ index, value })));
+    });
+    if (!jobs.length) return;
+    Promise.all(jobs).then((updates) => {
+      if (requestId !== this.busRequestId) return;
+      const merged = lines.slice();
+      updates.forEach((update) => { merged[update.index] = update.value; });
+      this.applyBusList(merged);
+      this.nearbyStations = this.applyStationLines(this.nearbyStations, station, merged);
+      this.saveHomeSnapshot();
+    }).catch(() => {});
+  },
+
   parseDistance(value) {
     const distance = Number(value);
     if (isNaN(distance)) return 0;
@@ -1484,12 +1571,16 @@ export default {
 
   loadNearbyStationLines(stations, requestId) {
     const rest = stations.slice(1, 4);
-    rest.forEach((station) => {
-      this.fetchStationLines(station).then((lines) => {
-        if (requestId !== this.busRequestId) return;
-        this.nearbyStations = this.applyStationLines(this.nearbyStations, station, lines);
-      }).catch(() => {});
-    });
+    if (this.nearbyPreloadTimer) clearTimeout(this.nearbyPreloadTimer);
+    this.nearbyPreloadTimer = setTimeout(() => {
+      this.nearbyPreloadTimer = null;
+      rest.forEach((station) => {
+        this.fetchStationLines(station).then((lines) => {
+          if (requestId !== this.busRequestId) return;
+          this.nearbyStations = this.applyStationLines(this.nearbyStations, station, lines);
+        }).catch(() => {});
+      });
+    }, NEARBY_PRELOAD_DELAY_MS);
   },
 
   extractLineNames(lines) {
@@ -1505,13 +1596,19 @@ export default {
   },
 
   apiPost(params) {
+    const startedAt = Date.now();
+    const command = params && params.CMD ? String(params.CMD) : '?';
     const pairs = [];
     Object.keys(params).forEach((key) => {
       const value = params[key] == null ? '' : String(params[key]);
       pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
     });
     return this.fetchBusRoutes(pairs.join('&')).then((response) => {
+      console.info(`[bus-perf] platform=watch cmd=${command} durationMs=${Date.now() - startedAt} result=ok`);
       return response && response.data ? response.data : response;
+    }).catch((error) => {
+      console.warn(`[bus-perf] platform=watch cmd=${command} durationMs=${Date.now() - startedAt} result=error`);
+      throw error;
     });
   },
 
@@ -2046,13 +2143,9 @@ export default {
         prompt.showToast({ message: '该方向暂无到站数据', duration: 2000 });
         return;
       }
-      const linesForUi = await this.enrichHomeLinesWith104(lines);
-      if (rid !== this.homeDirectionRequestId) {
-        this.lineDirection = prevDir;
-        return;
-      }
-      this.applyBusList(linesForUi);
-      this.nearbyStations = this.applyStationLines(stations, primary, linesForUi);
+      this.applyBusList(lines);
+      this.nearbyStations = this.applyStationLines(stations, primary, lines);
+      this.saveHomeSnapshot();
       const rest = stations.slice(1, 4);
       rest.forEach((st) => {
         this.fetchStationLines(st).then((ls) => {
@@ -2155,9 +2248,9 @@ export default {
         this.loadingText = '正在加载线路…';
       }
       const lines = await this.fetchStationLines(station);
-      const linesForUi = lines.length ? await this.enrichHomeLinesWith104(lines) : [];
-      if (linesForUi.length > 0) {
-        this.applyBusList(linesForUi);
+      if (lines.length > 0) {
+        this.applyBusList(lines);
+        this.saveHomeSnapshot();
       } else if (!hadList) {
         this.applyBusList([]);
         prompt.showToast({ message: '该站点暂无到站预报', duration: 2000 });

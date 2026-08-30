@@ -563,6 +563,7 @@ class SettingsActivity : AppCompatActivity() {
             return
         }
         val quick = PhoneLocationCache.peekForQuickReply(
+            this,
             PhoneLocationCache.QUICK_REPLY_MAX_WALL_MS,
             PhoneLocationCache.QUICK_REPLY_MAX_FIX_AGE_MS,
         )

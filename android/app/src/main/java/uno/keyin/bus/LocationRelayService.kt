@@ -448,6 +448,7 @@ class LocationRelayService : Service() {
 
         val sessionActive = isLocationSessionActive()
         val quick = PhoneLocationCache.peekForQuickReply(
+            applicationContext,
             PhoneLocationCache.QUICK_REPLY_MAX_WALL_MS,
             PhoneLocationCache.QUICK_REPLY_MAX_FIX_AGE_MS,
         )
