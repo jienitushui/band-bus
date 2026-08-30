@@ -82,7 +82,7 @@ class RealtimeBusAdapter(
                     binding.reminder.setOnClickListener { onFavoriteRemove.invoke(target) }
                 }
             }
-            binding.root.setOnClickListener { onOpen(target) }
+            binding.realtimeCard.setOnClickListener { onOpen(target) }
         }
     }
 }

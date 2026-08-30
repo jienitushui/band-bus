@@ -18,9 +18,13 @@
         android:textStyle="bold" />
 
     <com.google.android.material.card.MaterialCardView
+        android:id="@+id/realtimeCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="8dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
         app:cardCornerRadius="8dp"
         app:cardElevation="1dp">
 

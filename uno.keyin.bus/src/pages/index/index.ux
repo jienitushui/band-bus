@@ -1409,13 +1409,10 @@ export default {
   },
 
   /**
-   * 与详情页一致：LINENAME 需带「路」字时由接口约定，此处与 busDetail.normalizeLineName 对齐。
+   * 与安卓端一致：线路名按接口返回值原样传递，避免改写特殊线路名称。
    */
   normalizeLineNameForApi(name) {
-    const raw = String(name || '').trim();
-    if (!raw) return '';
-    if (raw.indexOf('路') >= 0) return raw;
-    return `${raw}路`;
+    return String(name || '').trim();
   },
 
   /**

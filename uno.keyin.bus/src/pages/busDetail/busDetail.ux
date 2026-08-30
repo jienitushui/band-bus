@@ -97,6 +97,7 @@ export default {
     ,realtimeLoading: false
     ,lastRealtimeSuccessAt: 0
     ,pageActive: false
+    ,pendingCurrentStationName: ''
   },
   onInit() {
     this.cityName = this.cityName ? String(this.cityName) : DEFAULT_CITY_NAME;
@@ -132,7 +133,10 @@ export default {
   },
   switchDirection() {
     if (this.loading) return;
-
+    const current = Array.isArray(this.stationList)
+      ? this.stationList.find((item) => String(item.stationOrder) === String(this.stationorder))
+      : null;
+    this.pendingCurrentStationName = current && current.stationName ? String(current.stationName) : '';
     this.direction = String(this.direction) === '1' ? '2' : '1';
     this.stationorder = '0';
     this.loadDetail();
@@ -306,10 +310,8 @@ export default {
   },
 
   normalizeLineName(name) {
-    const raw = String(name || '').trim();
-    if (!raw) return '';
-    if (raw.indexOf('路') >= 0) return raw;
-    return `${raw}路`;
+    // The API already returns canonical line names; keep them unchanged.
+    return String(name || '').trim();
   },
 
   async loadDetail() {
@@ -354,6 +356,13 @@ export default {
         : (this.schedulePlan103 ? `计划发车：${this.schedulePlan103}` : '');
 
       this.stationList = stations;
+      if (this.pendingCurrentStationName) {
+        const current = stations.find((item) =>
+          this.normalizeStationName(item.stationName) === this.normalizeStationName(this.pendingCurrentStationName)
+        );
+        this.stationorder = current && current.stationOrder != null ? String(current.stationOrder) : '0';
+        this.pendingCurrentStationName = '';
+      }
       await this.loadRealtime(lineName);
     } catch (e) {
       prompt.showToast({ message: '详情加载失败', duration: 2000 });

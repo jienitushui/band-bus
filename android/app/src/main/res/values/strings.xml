@@ -30,6 +30,7 @@
     <string name="title_transfer">公交换乘</string>
     <string name="transfer_start_hint">请输入起点站</string>
     <string name="transfer_my_location">我的位置</string>
+    <string name="transfer_use_location">使用我的位置</string>
     <string name="transfer_location_failed">无法获取当前位置，请检查定位权限</string>
     <string name="transfer_plan_incomplete">该方案数据不完整，无法同步到手表</string>
     <string name="transfer_end_hint">请输入终点站</string>

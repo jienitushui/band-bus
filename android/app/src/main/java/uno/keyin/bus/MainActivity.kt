@@ -274,21 +274,38 @@ class MainActivity : AppCompatActivity() {
                 binding.tabNearby.setTypeface(null, Typeface.BOLD)
                 binding.tabRealtime.setTextColor(gray)
                 binding.tabRealtime.setTypeface(null, Typeface.NORMAL)
-                binding.tabIndicator.visibility = View.VISIBLE
             }
             HomeSubTab.Realtime -> {
                 binding.tabNearby.setTextColor(gray)
                 binding.tabNearby.setTypeface(null, Typeface.NORMAL)
                 binding.tabRealtime.setTextColor(dark)
                 binding.tabRealtime.setTypeface(null, Typeface.BOLD)
-                binding.tabIndicator.visibility = View.INVISIBLE
                 binding.textHomeState.visibility = View.GONE
                 startRealtimePolling()
             }
         }
+        updateHomeTabIndicator(tab)
         if (binding.bottomNavigation.selectedItemId == R.id.nav_home) {
             showMainSection(isHome = true)
         }
+    }
+
+    private fun updateHomeTabIndicator(tab: HomeSubTab) {
+        val selected = if (tab == HomeSubTab.Nearby) binding.tabNearby else binding.tabRealtime
+        if (selected.width <= 0) {
+            selected.post { updateHomeTabIndicator(tab) }
+            return
+        }
+        val params = binding.tabIndicator.layoutParams
+        params.width = selected.width
+        binding.tabIndicator.layoutParams = params
+        val margin = 24 * resources.displayMetrics.density
+        binding.tabIndicator.translationX = if (tab == HomeSubTab.Realtime) {
+            binding.tabNearby.width + margin
+        } else {
+            0f
+        }
+        binding.tabIndicator.visibility = View.VISIBLE
     }
 
     override fun onResume() {
@@ -378,6 +395,10 @@ class MainActivity : AppCompatActivity() {
         binding.routeStationSuggestions.layoutManager = LinearLayoutManager(this)
         binding.routeStationSuggestions.adapter = routeSuggestionAdapter
         binding.inputRouteStart.setText(R.string.transfer_my_location)
+        binding.btnRouteLocation.setOnClickListener {
+            binding.inputRouteStart.setText(R.string.transfer_my_location)
+            binding.inputRouteStart.setSelection(binding.inputRouteStart.text?.length ?: 0)
+        }
         binding.inputRouteStart.doAfterTextChanged {
             if (!binding.inputRouteStart.hasFocus()) return@doAfterTextChanged
             activeRouteField = 1
