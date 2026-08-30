@@ -97,6 +97,8 @@ class LineDetailActivity : AppCompatActivity() {
     private var currentStationOrder = 0
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentDetail: LineDetail? = null
+    private var directionBeforeSwitch: String? = null
+    private var stationOrderBeforeSwitch: Int? = null
     private var realtimeLoading = false
     private var resumed = false
     private var lastRealtimeSuccessAt = 0L
@@ -115,6 +117,8 @@ class LineDetailActivity : AppCompatActivity() {
         city = CityConfigStore.get(this)
         binding.btnBack.setOnClickListener { finish() }
         binding.btnDirection.setOnClickListener {
+            directionBeforeSwitch = direction
+            stationOrderBeforeSwitch = currentStationOrder
             direction = if (direction == "1") "2" else "1"
             currentStationOrder = 0
             stopRealtimePolling()
@@ -153,6 +157,17 @@ class LineDetailActivity : AppCompatActivity() {
                 if (generation != detailGeneration || isFinishing || isDestroyed) return@runOnUiThread
                 binding.loading.visibility = View.GONE
                 result.onSuccess { detail ->
+                    if (detail.stations.isEmpty() && directionBeforeSwitch != null) {
+                        Toast.makeText(this, R.string.line_detail_one_way, Toast.LENGTH_SHORT).show()
+                        direction = directionBeforeSwitch!!
+                        currentStationOrder = stationOrderBeforeSwitch ?: 0
+                        directionBeforeSwitch = null
+                        stationOrderBeforeSwitch = null
+                        load()
+                        return@onSuccess
+                    }
+                    directionBeforeSwitch = null
+                    stationOrderBeforeSwitch = null
                     currentDetail = detail
                     binding.lineTitle.text = detail.lineName
                     binding.lineDirection.text = "${detail.from} → ${detail.to}"
@@ -165,7 +180,17 @@ class LineDetailActivity : AppCompatActivity() {
                     loadRealtime(detail)
                     binding.stationList.visibility = View.VISIBLE
                 }.onFailure {
-                    Toast.makeText(this, R.string.line_detail_failed, Toast.LENGTH_SHORT).show()
+                    val previousDirection = directionBeforeSwitch
+                    if (previousDirection != null) {
+                        Toast.makeText(this, R.string.line_detail_one_way, Toast.LENGTH_SHORT).show()
+                        direction = previousDirection
+                        currentStationOrder = stationOrderBeforeSwitch ?: 0
+                        directionBeforeSwitch = null
+                        stationOrderBeforeSwitch = null
+                        load()
+                    } else {
+                        Toast.makeText(this, R.string.line_detail_failed, Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }

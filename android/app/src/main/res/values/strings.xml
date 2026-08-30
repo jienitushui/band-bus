@@ -27,6 +27,7 @@
     <string name="action_switch_direction">换向</string>
     <string name="line_detail_loading">正在加载线路详情…</string>
     <string name="line_detail_failed">线路详情加载失败，请稍后重试</string>
+    <string name="line_detail_one_way">此为单向线路，没有反向</string>
     <string name="title_transfer">公交换乘</string>
     <string name="transfer_start_hint">请输入起点站</string>
     <string name="transfer_my_location">我的位置</string>

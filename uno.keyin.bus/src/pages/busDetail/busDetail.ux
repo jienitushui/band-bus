@@ -98,6 +98,8 @@ export default {
     ,lastRealtimeSuccessAt: 0
     ,pageActive: false
     ,pendingCurrentStationName: ''
+    ,directionBeforeSwitch: ''
+    ,stationOrderBeforeSwitch: ''
   },
   onInit() {
     this.cityName = this.cityName ? String(this.cityName) : DEFAULT_CITY_NAME;
@@ -137,6 +139,8 @@ export default {
       ? this.stationList.find((item) => String(item.stationOrder) === String(this.stationorder))
       : null;
     this.pendingCurrentStationName = current && current.stationName ? String(current.stationName) : '';
+    this.directionBeforeSwitch = String(this.direction);
+    this.stationOrderBeforeSwitch = String(this.stationorder || '0');
     this.direction = String(this.direction) === '1' ? '2' : '1';
     this.stationorder = '0';
     this.loadDetail();
@@ -341,6 +345,21 @@ export default {
 
       const detail = apiResp || {};
       const stations = Array.isArray(detail.data) ? detail.data : [];
+
+      if (!stations.length && this.directionBeforeSwitch) {
+        prompt.showToast({ message: '此为单向线路，没有反向', duration: 2200 });
+        const previousDirection = this.directionBeforeSwitch;
+        const previousStationOrder = this.stationOrderBeforeSwitch;
+        this.directionBeforeSwitch = '';
+        this.stationOrderBeforeSwitch = '';
+        this.pendingCurrentStationName = '';
+        this.direction = previousDirection;
+        this.stationorder = previousStationOrder || '0';
+        setTimeout(() => this.loadDetail(), 0);
+        return;
+      }
+      this.directionBeforeSwitch = '';
+      this.stationOrderBeforeSwitch = '';
 
       this.routeId = detail.routeId || '';
 
