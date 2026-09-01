@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import uno.keyin.bus.databinding.ActivitySettingsBinding
 import uno.keyin.bus.location.PhoneLocationCache
 import uno.keyin.bus.location.PhoneLocationHelper
+import uno.keyin.bus.wear.WearSdkErrorMessages
 import uno.keyin.bus.wear.XmsWearSdkBridge
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -509,7 +510,7 @@ class SettingsActivity : AppCompatActivity() {
             this,
             id,
             onOk = { appendLog("权限申请流程已返回（请在小米穿戴中确认第三方授权）") },
-            onErr = { appendLog("申请权限失败: $it") },
+            onErr = { appendLog("申请权限失败: ${WearSdkErrorMessages.friendly(this, it)}") },
         )
     }
 
@@ -576,9 +577,9 @@ class SettingsActivity : AppCompatActivity() {
                 id,
                 json,
                 onOk = { appendLog("位置已发送") },
-                onErr = { appendLog("发送失败: $it") },
+                onErr = { appendLog("发送失败: ${WearSdkErrorMessages.friendly(this, it)}") },
             )
-            PhoneLocationHelper.fetchBestLocation(this, highAccuracy = true) { }
+            PhoneLocationHelper.fetchBestLocation(this, highAccuracy = true, allowLastKnown = false) { }
             return
         }
         if (sendLocationInFlight) {
@@ -601,7 +602,7 @@ class SettingsActivity : AppCompatActivity() {
                     id,
                     json,
                     onOk = { appendLog("位置已发送") },
-                    onErr = { appendLog("发送失败: $it") },
+                    onErr = { appendLog("发送失败: ${WearSdkErrorMessages.friendly(this, it)}") },
                 )
             }
         }
@@ -623,7 +624,7 @@ class SettingsActivity : AppCompatActivity() {
             id,
             text,
             onOk = { appendLog("发送成功") },
-            onErr = { appendLog("发送失败: $it") },
+            onErr = { appendLog("发送失败: ${WearSdkErrorMessages.friendly(this, it)}") },
         )
     }
 }

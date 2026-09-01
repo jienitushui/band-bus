@@ -1014,14 +1014,30 @@ class MainActivity : AppCompatActivity() {
         showHomeState(if (hasNearbySnapshot) null else getString(R.string.home_nearby_loading))
         if (cachedLocation != null) {
             loadNearbyAt(city, cachedLocation, generation)
-            PhoneLocationHelper.fetchBestLocation(this, highAccuracy = false) { fresh ->
-                if (fresh == null || cachedLocation.distanceTo(fresh) < HOME_LOCATION_REFRESH_DISTANCE_M) {
+            // 已有缓存可秒开：后台必须拿「当前定位」，不能再走 lastLocation 快路径
+            // （否则经常拿到与缓存同一条，距离阈值判断后附近站点永远不更新）
+            PhoneLocationHelper.fetchBestLocation(
+                this,
+                highAccuracy = false,
+                allowLastKnown = false,
+            ) { fresh ->
+                if (fresh == null) return@fetchBestLocation
+                val movedMeters = cachedLocation.distanceTo(fresh)
+                if (movedMeters < HOME_LOCATION_REFRESH_DISTANCE_M) {
+                    android.util.Log.i(
+                        "BusPerf",
+                        "stage=home_loc_refresh skipNearby movedM=${"%.1f".format(movedMeters)} thresholdM=$HOME_LOCATION_REFRESH_DISTANCE_M",
+                    )
                     return@fetchBestLocation
                 }
                 mainHandler.post {
                     if (generation != homeLoadGeneration || CityConfigStore.get(this).version != city.version) {
                         return@post
                     }
+                    android.util.Log.i(
+                        "BusPerf",
+                        "stage=home_loc_refresh reloadNearby movedM=${"%.1f".format(movedMeters)}",
+                    )
                     val refreshGeneration = ++homeLoadGeneration
                     loadNearbyAt(city, fresh, refreshGeneration)
                 }
@@ -1123,7 +1139,7 @@ class MainActivity : AppCompatActivity() {
                 onOk = { Toast.makeText(this, R.string.toast_location_sent, Toast.LENGTH_SHORT).show() },
                 onErr = { Toast.makeText(this, getString(R.string.toast_send_fail, it), Toast.LENGTH_SHORT).show() },
             )
-            PhoneLocationHelper.fetchBestLocation(this, highAccuracy = true) { }
+            PhoneLocationHelper.fetchBestLocation(this, highAccuracy = true, allowLastKnown = false) { }
             return
         }
         if (sendLocationInFlight) {

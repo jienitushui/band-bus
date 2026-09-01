@@ -21,6 +21,7 @@ import org.json.JSONObject
 import android.location.Location
 import uno.keyin.bus.location.PhoneLocationCache
 import uno.keyin.bus.location.PhoneLocationHelper
+import uno.keyin.bus.wear.WearSdkErrorMessages
 import uno.keyin.bus.wear.XmsWearSdkBridge
 
 /**
@@ -44,6 +45,12 @@ class LocationRelayService : Service() {
 
     /** 当前 Wear 节点已成功推送过「主动首包」后不再重复，直至节点断开或切换 */
     private var lastProactiveSnapshotNodeId: String? = null
+
+    /**
+     * 收到 fingerprint verify failed 后暂停主动推送，避免反复定位 + 刷失败通知。
+     * 服务重建、节点切换或用户触发「推送城市配置」时清除。
+     */
+    private var proactiveBlockedByFingerprint = false
 
     private val periodicRefresh = object : Runnable {
         override fun run() {
@@ -94,6 +101,7 @@ class LocationRelayService : Service() {
             ACTION_REFRESH_NOTIF_WATCHDOG,
             ACTION_REAPPLY_RELAY_PREFS -> applyRelayUiPrefsFromIntent()
             ACTION_PUSH_CITY_CONFIG -> {
+                proactiveBlockedByFingerprint = false
                 listenerRegisteredForNode?.let { nodeId ->
                     sendCityConfig(nodeId)
                     lastProactiveSnapshotNodeId = null
@@ -139,6 +147,7 @@ class LocationRelayService : Service() {
             onDisconnected = {
                 listenerRegisteredForNode = null
                 lastProactiveSnapshotNodeId = null
+                proactiveBlockedByFingerprint = false
                 updateNotification(getString(R.string.relay_notif_wear_disconnected))
             },
         )
@@ -324,7 +333,9 @@ class LocationRelayService : Service() {
                 }
             },
             onErr = {
-                updateNotification(getString(R.string.relay_notif_listen_fail, it))
+                onWearSendFailure(it) { friendly ->
+                    updateNotification(getString(R.string.relay_notif_listen_fail, friendly))
+                }
             },
         )
     }
@@ -332,6 +343,10 @@ class LocationRelayService : Service() {
     private fun maybeSendProactiveLocationSnapshot(nodeId: String) {
         if (nodeId != listenerRegisteredForNode) return
         if (lastProactiveSnapshotNodeId == nodeId) return
+        if (proactiveBlockedByFingerprint) {
+            updateNotification(getString(R.string.relay_notif_proactive_blocked))
+            return
+        }
         if (!PhoneLocationHelper.hasLocationPermission(applicationContext)) return
 
         /** 重连首包：始终高精度，避免手表已开页但会话消息未到、会话窗口未激活时仍走平衡模式导致长时间无坐标 */
@@ -344,6 +359,7 @@ class LocationRelayService : Service() {
                 wl.acquire(5000)
                 try {
                     if (loc == null || nodeId != listenerRegisteredForNode) return@post
+                    if (proactiveBlockedByFingerprint) return@post
                     val payload = PhoneLocationPayload.toJson(loc, null, PhoneLocationPayload.SOURCE_PROACTIVE)
                     XmsWearSdkBridge.sendTextToNode(
                         applicationContext,
@@ -351,10 +367,13 @@ class LocationRelayService : Service() {
                         payload,
                         onOk = {
                             lastProactiveSnapshotNodeId = nodeId
+                            proactiveBlockedByFingerprint = false
                             updateNotification(getString(R.string.relay_notif_proactive_sent))
                         },
                         onErr = {
-                            updateNotification(getString(R.string.relay_notif_proactive_fail, it))
+                            onWearSendFailure(it) { friendly ->
+                                updateNotification(getString(R.string.relay_notif_proactive_fail, friendly))
+                            }
                         },
                     )
                 } finally {
@@ -362,6 +381,15 @@ class LocationRelayService : Service() {
                 }
             }
         }
+    }
+
+    private fun onWearSendFailure(raw: String?, notify: (String) -> Unit) {
+        val friendly = WearSdkErrorMessages.friendly(this, raw)
+        if (WearSdkErrorMessages.isFingerprintMismatch(raw)) {
+            proactiveBlockedByFingerprint = true
+            lastProactiveSnapshotNodeId = listenerRegisteredForNode
+        }
+        notify(friendly)
     }
 
     private fun handleWatchPayload(nodeId: String, bytes: ByteArray) {
@@ -454,7 +482,12 @@ class LocationRelayService : Service() {
         )
         if (quick != null) {
             deliverPhoneLocation(nodeId, requestId, quick)
-            PhoneLocationHelper.fetchBestLocation(applicationContext, highAccuracy = sessionActive) { }
+            // 秒回缓存后后台校正：跳过 lastLocation，避免缓存永远写回同一条旧点
+            PhoneLocationHelper.fetchBestLocation(
+                applicationContext,
+                highAccuracy = sessionActive,
+                allowLastKnown = false,
+            ) { }
             return
         }
 
@@ -481,7 +514,9 @@ class LocationRelayService : Service() {
                 updateNotification(getString(R.string.relay_notif_sent))
             },
             onErr = {
-                updateNotification(getString(R.string.relay_notif_send_fail, it))
+                onWearSendFailure(it) { friendly ->
+                    updateNotification(getString(R.string.relay_notif_send_fail, friendly))
+                }
             },
         )
     }

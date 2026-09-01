@@ -54,10 +54,16 @@ object PhoneLocationHelper {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    /**
+     * @param allowLastKnown 为 false 时跳过 Fused lastLocation 快路径，强制走
+     * [getCurrentLocation]（超时后再回退 last）。用于「已有缓存秒开、后台校正」场景，
+     * 避免把缓存里同一条 last 再当“新定位”用，导致附近站点看起来刷新了却不变。
+     */
     @SuppressLint("MissingPermission")
     fun fetchBestLocation(
         context: Context,
         highAccuracy: Boolean = true,
+        allowLastKnown: Boolean = true,
         onResult: (Location?) -> Unit,
     ) {
         val appCtx = context.applicationContext
@@ -72,6 +78,10 @@ object PhoneLocationHelper {
 
         val fused = runCatching { LocationServices.getFusedLocationProviderClient(context) }.getOrNull()
         if (fused != null) {
+            if (!allowLastKnown) {
+                requestFusedCurrentThenFallback(fused, appCtx, highAccuracy, wrapped)
+                return
+            }
             val maxLastAge = if (highAccuracy) MAX_LAST_KNOWN_AGE_HIGH_MS else MAX_LAST_KNOWN_AGE_BALANCED_MS
             fused.lastLocation.addOnSuccessListener { last ->
                 if (last != null && System.currentTimeMillis() - last.time <= maxLastAge) {

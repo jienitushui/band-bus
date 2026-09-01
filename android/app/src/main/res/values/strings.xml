@@ -170,7 +170,13 @@
     <string name="relay_notif_sent">已向手表回传定位</string>
     <string name="relay_notif_proactive_sent">已向手表推送主动定位（重连首包）</string>
     <string name="relay_notif_proactive_fail">主动定位推送失败：%1$s</string>
+    <string name="relay_notif_proactive_blocked">签名不一致，已暂停主动推送；请两端同证书重装</string>
     <string name="relay_notif_send_fail">发送失败：%1$s</string>
+    <string name="wear_err_unknown">未知错误</string>
+    <string name="wear_err_fingerprint">手机与手表签名指纹不一致。请卸载两端「腕上公交」后，用同一次构建的 APK + RPK（同一套证书）重装，再到设置里跑「互联自检」并申请穿戴权限。</string>
+    <string name="wear_err_app_not_installed">穿戴未识别到对应手表应用。请确认手表已安装同包名 RPK，且与手机 APK 签名一致。</string>
+    <string name="wear_err_permission_denied">缺少穿戴通信权限。请到设置点「申请穿戴权限」，或在小米穿戴中允许本应用。</string>
+    <string name="wear_err_not_connected">手表未连接。请打开小米穿戴确认蓝牙已连接后再试。</string>
     <string name="log_relay_started">已启动「定位中继」前台服务（见通知栏），锁屏时仍可响应手表索要定位；请勿强行停止。</string>
     <string name="log_phone_relay_must_resident">提示：手机端本应用与「定位中继」通知需常驻；手表可关快应用，再次打开首页会自动向手机要定位。</string>
     <string name="log_relay_listener_hint">手表→手机消息由「定位中继」服务统一监听，无需再点本按钮。</string>
