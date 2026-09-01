@@ -1,0 +1,2 @@
+f6e7b2cd5ebc9b006d528dd75e7079b22c730c1ae077d3256adb8c0094bb6902  band-bus-1.3-phone-release.apk
+4618f120456823860ea0fe1bc9ef61417dca37d45b8b3098ba665e1f24e594cf  band-bus-V26.2.7.BAND-watch-release.rpk

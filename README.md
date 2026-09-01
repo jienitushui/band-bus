@@ -6,6 +6,10 @@
 
 > 包名两端均为 `uno.keyin.bus`。手机 APK 与手表 RPK **必须使用同一套签名证书**，否则会出现 `fingerprint verify failed` 等互联失败。
 
+## 下载
+
+正式 release 安装包见 [`releases/`](releases/) 目录（当前最新：[`v1.3.0`](releases/v1.3.0/)），内含 APK、RPK、安装说明与校验文件。
+
 ## 功能概览
 
 ### 手表端（Vela 快应用）

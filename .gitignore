@@ -20,6 +20,8 @@ local.properties
 *.apk
 *.aab
 *.dex
+!/releases/**/*.apk
+!/releases/**/*.rpk
 captures/
 .externalNativeBuild/
 .cxx/
